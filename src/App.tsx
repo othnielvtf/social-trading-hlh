@@ -11,6 +11,7 @@ import { Profile } from './components/pages/Profile';
 import { PostModal } from './components/PostModal';
 import { ProtectedRoute } from './components/ProtectedRoute';
 import { isUserProfileComplete } from './utils/profile';
+import { ProfileCompletionModal } from './components/ProfileCompletionModal';
 
 type Page = 'home' | 'explore' | 'portfolio' | 'trade' | 'profile';
 
@@ -20,6 +21,7 @@ function AppContent() {
   const [currentUserId, setCurrentUserId] = useState<string | null>(null);
   const [isPostModalOpen, setIsPostModalOpen] = useState(false);
   const [hasEnforcedProfile, setHasEnforcedProfile] = useState(false);
+  const [showProfileBlockModal, setShowProfileBlockModal] = useState(false);
   const [isDarkMode, setIsDarkMode] = useState(() => {
     // Check localStorage for saved preference, default to light mode
     const saved = localStorage.getItem('darkMode');
@@ -53,6 +55,7 @@ function AppContent() {
       setCurrentUserId(null);
       setCurrentPage('profile');
       setHasEnforcedProfile(true);
+      setShowProfileBlockModal(true);
     }
   }, [isAuthenticated, user, hasEnforcedProfile]);
 
@@ -107,6 +110,7 @@ function AppContent() {
               if (isAuthenticated && !profileComplete && isProtected) {
                 setCurrentPage('profile');
                 setCurrentUserId(null);
+                setShowProfileBlockModal(true);
                 return;
               }
               setCurrentPage(page);
@@ -127,6 +131,15 @@ function AppContent() {
       <PostModal 
         isOpen={isPostModalOpen} 
         onClose={() => setIsPostModalOpen(false)} 
+      />
+      <ProfileCompletionModal 
+        isOpen={showProfileBlockModal}
+        onClose={() => setShowProfileBlockModal(false)}
+        onGoToProfile={() => {
+          setShowProfileBlockModal(false);
+          setCurrentPage('profile');
+          setCurrentUserId(null);
+        }}
       />
     </div>
   );

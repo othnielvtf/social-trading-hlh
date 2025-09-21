@@ -1,9 +1,11 @@
-import React, { useState } from 'react';
+import React, { useEffect, useMemo, useState } from 'react';
 import { TrendingUp, TrendingDown, DollarSign, Activity, Eye, EyeOff } from 'lucide-react';
 import { Card, CardContent, CardHeader, CardTitle } from '../ui/card';
 import { Badge } from '../ui/badge';
 import { Button } from '../ui/button';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '../ui/tabs';
+import { useFirestoreAuthContext } from '../../contexts/FirestoreAuthContext';
+import { fetchAllMids, fetchClearinghouseState, fetchSpotClearinghouseState, SpotBalance } from '../../utils/hyperliquid';
 
 interface Position {
   id: string;
@@ -108,11 +110,80 @@ const mockClosedTrades: ClosedTrade[] = [
 export function Portfolio() {
   const [isBalanceVisible, setIsBalanceVisible] = useState(true);
   const [activeTab, setActiveTab] = useState('positions');
+  const { privyUser } = useFirestoreAuthContext();
 
-  const totalBalance = 25430.75;
-  const totalPnL = 322.5;
-  const totalPnLPercent = 1.29;
-  const availableMargin = 18650.25;
+  const address = privyUser?.address;
+  const [balances, setBalances] = useState<SpotBalance[] | null>(null);
+  const [margin, setMargin] = useState<{
+    accountValue: string;
+    totalNtlPos: string;
+    totalRawUsd: string;
+    totalMarginUsed: string;
+    withdrawable: string;
+  } | null>(null);
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const [mids, setMids] = useState<Record<string, number> | null>(null);
+
+  useEffect(() => {
+    let cancelled = false;
+    async function load() {
+      if (!address) return;
+      setLoading(true);
+      setError(null);
+      try {
+        const [spotRes, chRes, midsRes] = await Promise.all([
+          fetchSpotClearinghouseState(address, ''),
+          fetchClearinghouseState(address, ''),
+          fetchAllMids(''),
+        ]);
+        if (cancelled) return;
+        setBalances(spotRes.balances || []);
+        setMargin({
+          accountValue: chRes.marginSummary.accountValue,
+          totalNtlPos: chRes.marginSummary.totalNtlPos,
+          totalRawUsd: chRes.marginSummary.totalRawUsd,
+          totalMarginUsed: chRes.marginSummary.totalMarginUsed,
+          withdrawable: chRes.withdrawable,
+        });
+        // Keep both symbol and id variants in the map so we can look up by coin (e.g., 'HYPE')
+        // and by token id (e.g., '@1' or '1').
+        const midsParsed: Record<string, number> = {};
+        Object.entries(midsRes || {}).forEach(([k, v]) => {
+          const num = parseFloat(v as string);
+          if (Number.isNaN(num)) return;
+          // Preserve original key (could be 'HYPE' or '@1')
+          midsParsed[k] = num;
+          // If key starts with '@', also add the numeric-only variant
+          if (k.startsWith('@')) {
+            midsParsed[k.slice(1)] = num;
+          }
+        });
+        setMids(midsParsed);
+      } catch (e: any) {
+        if (cancelled) return;
+        setError(e?.message || 'Failed to load portfolio data');
+      } finally {
+        if (!cancelled) setLoading(false);
+      }
+    }
+    load();
+    return () => { cancelled = true; };
+  }, [address]);
+
+  const totalBalance = useMemo(() => {
+    if (!balances || !mids) return 0;
+    return balances.reduce((sum, b) => {
+      const qty = parseFloat(b.total) || 0;
+      const mid = mids[b.coin] ?? mids[`@${b.token}`] ?? mids[String(b.token)] ?? 0;
+      return sum + qty * mid;
+    }, 0);
+  }, [balances, mids]);
+  const totalPnL = 0; // Not provided by API; keep placeholder for now
+  const totalPnLPercent = 0; // Placeholder
+  const availableMargin = useMemo(() => {
+    return margin ? parseFloat(margin.withdrawable) || 0 : 0;
+  }, [margin]);
 
   return (
     <div className="h-screen flex flex-col">
@@ -147,7 +218,7 @@ export function Portfolio() {
                 <CardTitle className="text-sm">Total PnL</CardTitle>
               </CardHeader>
               <CardContent>
-                <div className={`text-2xl font-bold ${totalPnL > 0 ? 'text-green-600' : 'text-red-600'}`}>
+                <div className={`text-2xl font-bold ${totalPnL > 0 ? 'text-green-600' : totalPnL < 0 ? 'text-red-600' : ''}`}>
                   {isBalanceVisible ? (
                     <>
                       {totalPnL > 0 ? '+' : ''}${totalPnL.toFixed(2)}
@@ -185,6 +256,65 @@ export function Portfolio() {
             </Card>
           </div>
           
+          {/* Hyperliquid: Balances + Margin */}
+          <div className="space-y-4">
+            {!address ? (
+              <Card>
+                <CardContent className="p-4 text-sm text-muted-foreground">
+                  Connect a wallet to view your on-chain portfolio summary.
+                </CardContent>
+              </Card>
+            ) : loading ? (
+              <Card>
+                <CardContent className="p-4">Loading Hyperliquid data…</CardContent>
+              </Card>
+            ) : error ? (
+              <Card>
+                <CardContent className="p-4 text-destructive">{error}</CardContent>
+              </Card>
+            ) : (
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                <Card>
+                  <CardHeader className="pb-2"><CardTitle className="text-sm">Spot Balances</CardTitle></CardHeader>
+                  <CardContent className="p-4 space-y-2">
+                    {balances && balances.length > 0 ? (
+                      balances.map((b, idx) => (
+                        <div key={`${b.coin}-${idx}`} className="flex items-center justify-between text-sm">
+                          <div className="text-muted-foreground">{b.coin}</div>
+                          <div className="font-medium flex items-center gap-2">
+                            <span>{parseFloat(b.total).toLocaleString()}</span>
+                            <span className="text-muted-foreground">@ ${mids ? (mids[b.coin] ?? mids[`@${b.token}`] ?? mids[String(b.token)] ?? 0).toLocaleString() : '-'}</span>
+                            <span>
+                              = ${mids ? ((parseFloat(b.total)||0) * (mids[b.coin] ?? mids[`@${b.token}`] ?? mids[String(b.token)] ?? 0)).toLocaleString() : '-'}
+                            </span>
+                          </div>
+                        </div>
+                      ))
+                    ) : (
+                      <div className="text-sm text-muted-foreground">No balances</div>
+                    )}
+                  </CardContent>
+                </Card>
+                <Card>
+                  <CardHeader className="pb-2"><CardTitle className="text-sm">Margin Summary</CardTitle></CardHeader>
+                  <CardContent className="p-4 space-y-2 text-sm">
+                    {margin ? (
+                      <>
+                        <div className="flex items-center justify-between"><span className="text-muted-foreground">Account Value</span><span className="font-medium">{margin.accountValue}</span></div>
+                        <div className="flex items-center justify-between"><span className="text-muted-foreground">Total Notional</span><span className="font-medium">{margin.totalNtlPos}</span></div>
+                        <div className="flex items-center justify-between"><span className="text-muted-foreground">Raw USD</span><span className="font-medium">{margin.totalRawUsd}</span></div>
+                        <div className="flex items-center justify-between"><span className="text-muted-foreground">Margin Used</span><span className="font-medium">{margin.totalMarginUsed}</span></div>
+                        <div className="flex items-center justify-between"><span className="text-muted-foreground">Withdrawable</span><span className="font-medium">{margin.withdrawable}</span></div>
+                      </>
+                    ) : (
+                      <div className="text-sm text-muted-foreground">No margin data</div>
+                    )}
+                  </CardContent>
+                </Card>
+              </div>
+            )}
+          </div>
+
           {/* Positions and History */}
           <Tabs value={activeTab} onValueChange={setActiveTab}>
             <div className="flex items-center justify-between mb-4">
@@ -238,7 +368,7 @@ export function Portfolio() {
   );
 }
 
-function PositionCard({ position }: { position: Position }) {
+const PositionCard: React.FC<{ position: Position }> = ({ position }) => {
   return (
     <Card className="p-4 hover:bg-accent/50 transition-colors border border-border">
       <div className="space-y-3">
@@ -311,7 +441,7 @@ function PositionCard({ position }: { position: Position }) {
   );
 }
 
-function TradeHistoryCard({ trade }: { trade: ClosedTrade }) {
+const TradeHistoryCard: React.FC<{ trade: ClosedTrade }> = ({ trade }) => {
   return (
     <Card className="p-4 hover:bg-accent/50 transition-colors">
       <div className="space-y-3">

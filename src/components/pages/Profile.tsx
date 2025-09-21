@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { Calendar, MapPin, Link as LinkIcon, Edit, Settings, TrendingUp, Users, Activity, Heart } from 'lucide-react';
+import { Calendar, MapPin, Link as LinkIcon, Edit, Settings, TrendingUp, Users, Activity, Heart, Wallet, Mail } from 'lucide-react';
 import { Avatar } from '../ui/avatar';
 import { Button } from '../ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '../ui/card';
@@ -191,7 +191,8 @@ interface ProfileProps {
 
 export function Profile({ userId, onUserClick }: ProfileProps) {
   const [activeTab, setActiveTab] = useState('open');
-  const { user: firestoreUser } = useFirestoreAuthContext();
+  const [copiedField, setCopiedField] = useState<'address' | 'email' | null>(null);
+  const { user: firestoreUser, privyUser } = useFirestoreAuthContext();
   
   // Get the profile data - use current user if no userId provided
   const isOwnProfile = !userId;
@@ -235,6 +236,40 @@ export function Profile({ userId, onUserClick }: ProfileProps) {
               <div className="p-4 space-y-3">
                 {/* Username */}
                 <div className="text-lg text-muted-foreground">@{profile.username}</div>
+                {/* Identity: wallet or email from Privy (full, with copy) */}
+                <div className="flex items-center gap-3 text-xs text-muted-foreground">
+                  {privyUser?.address ? (
+                    <div className="inline-flex items-center gap-2">
+                      <Wallet className="w-3 h-3" />
+                      <span className="font-mono text-foreground/80 break-all">{privyUser.address}</span>
+                      <button
+                        onClick={() => {
+                          navigator.clipboard.writeText(privyUser.address || '');
+                          setCopiedField('address');
+                          setTimeout(() => setCopiedField(null), 1200);
+                        }}
+                        className="px-2 py-0.5 rounded border border-border text-foreground hover:bg-accent/50"
+                      >
+                        {copiedField === 'address' ? 'Copied' : 'Copy'}
+                      </button>
+                    </div>
+                  ) : privyUser?.email ? (
+                    <div className="inline-flex items-center gap-2">
+                      <Mail className="w-3 h-3" />
+                      <span className="text-foreground/80 break-all">{privyUser.email}</span>
+                      <button
+                        onClick={() => {
+                          navigator.clipboard.writeText(privyUser.email || '');
+                          setCopiedField('email');
+                          setTimeout(() => setCopiedField(null), 1200);
+                        }}
+                        className="px-2 py-0.5 rounded border border-border text-foreground hover:bg-accent/50"
+                      >
+                        {copiedField === 'email' ? 'Copied' : 'Copy'}
+                      </button>
+                    </div>
+                  ) : null}
+                </div>
                 
                 {/* Profile Picture, Name and Stats */}
                 <div className="flex items-start justify-between">

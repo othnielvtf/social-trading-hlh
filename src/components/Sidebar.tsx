@@ -21,6 +21,7 @@ interface SidebarProps {
 
 export function Sidebar({ currentPage, onPageChange, onPostClick, isDarkMode, onToggleDarkMode }: SidebarProps) {
   const [isDropdownOpen, setIsDropdownOpen] = useState(false);
+  const [isConnecting, setIsConnecting] = useState(false);
   const dropdownRef = useRef<HTMLDivElement>(null);
   const { isAuthenticated, user, login, logout, connectWallet } = usePrivyAuth();
   const { user: firestoreUser } = useFirestoreAuthContext();
@@ -158,19 +159,29 @@ export function Sidebar({ currentPage, onPageChange, onPostClick, isDarkMode, on
               <div className="absolute bottom-full left-0 w-full mb-2 bg-card border border-border rounded-xl shadow-lg">
                 {!user.address && (
                   <button
-                    onClick={() => {
-                      connectWallet();
-                      setIsDropdownOpen(false);
+                    disabled={isConnecting}
+                    onClick={async () => {
+                      if (isConnecting) return;
+                      try {
+                        setIsConnecting(true);
+                        await connectWallet();
+                        setIsDropdownOpen(false);
+                      } finally {
+                        setIsConnecting(false);
+                      }
                     }}
-                    className="w-full flex items-center gap-3 px-4 py-3 border-b border-border hover:bg-accent/50 transition-colors text-left"
+                    className={`w-full flex items-center gap-3 px-4 py-3 rounded-t-xl transition-colors text-left border-b border-border 
+                      ${isDarkMode ? 'bg-white text-black hover:bg-white/90' : 'bg-black text-white hover:bg-black/85'} 
+                      disabled:opacity-60 disabled:cursor-not-allowed`}
                   >
                     <Wallet size={18} />
-                    <span className="hidden xl:block">Connect Wallet</span>
+                    <span className="hidden xl:block">{isConnecting ? 'Connecting…' : 'Connect Wallet'}</span>
                   </button>
                 )}
                 <button
                   onClick={handleLogout}
-                  className="w-full flex items-center gap-3 px-4 py-3 rounded-xl hover:bg-accent/50 transition-colors text-left"
+                  className={`w-full flex items-center gap-3 px-4 py-3 rounded-b-xl transition-colors text-left border-t border-border 
+                    ${isDarkMode ? 'bg-white text-black hover:bg-white/90' : 'bg-black text-white hover:bg-black/85'}`}
                 >
                   <LogOut size={18} />
                   <span className="hidden xl:block">Log out</span>

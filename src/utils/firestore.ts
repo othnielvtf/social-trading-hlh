@@ -4,12 +4,13 @@ import {
   getDoc, 
   getDocs, 
   addDoc, 
+  setDoc,
   updateDoc, 
   deleteDoc, 
   query, 
   where, 
   orderBy, 
-  limit,
+  limit as limitQuery,
   serverTimestamp,
   Timestamp,
   DocumentData
@@ -71,7 +72,7 @@ export interface TradePosition {
 export const getPosts = async (limit = 20): Promise<Post[]> => {
   try {
     const postsRef = collection(db, 'posts');
-    const q = query(postsRef, orderBy('timestamp', 'desc'), limit(limit));
+    const q = query(postsRef, orderBy('timestamp', 'desc'), limitQuery(limit));
     const querySnapshot = await getDocs(q);
     
     return querySnapshot.docs.map(doc => ({
@@ -160,7 +161,7 @@ export const createOrUpdateUser = async (userId: string, userData: Partial<UserD
         totalTrades: 0
       };
       
-      await updateDoc(userRef, { ...defaultData, ...userData });
+      await setDoc(userRef, { ...defaultData, ...userData }, { merge: true });
     }
     
     return true;
@@ -193,7 +194,7 @@ export const getOpenPositions = async (userId: string): Promise<TradePosition[]>
   }
 };
 
-export const getClosedPositions = async (userId: string, limit = 20): Promise<TradePosition[]> => {
+export const getClosedPositions = async (userId: string, max = 20): Promise<TradePosition[]> => {
   try {
     const positionsRef = collection(db, 'positions');
     const q = query(
@@ -201,7 +202,7 @@ export const getClosedPositions = async (userId: string, limit = 20): Promise<Tr
       where('userId', '==', userId),
       where('status', '==', 'closed'),
       orderBy('closeDate', 'desc'),
-      limit(limit)
+      limitQuery(max)
     );
     
     const querySnapshot = await getDocs(q);
@@ -263,11 +264,11 @@ export const closePosition = async (positionId: string, closePrice: number): Pro
 export const followUser = async (followerId: string, followingId: string): Promise<boolean> => {
   try {
     const followRef = doc(db, 'follows', `${followerId}_${followingId}`);
-    await updateDoc(followRef, {
+    await setDoc(followRef, {
       followerId,
       followingId,
       timestamp: serverTimestamp()
-    });
+    }, { merge: true });
     
     // Update follower/following counts
     const followerRef = doc(db, 'users', followerId);

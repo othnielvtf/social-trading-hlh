@@ -68,6 +68,15 @@ export interface TradePosition {
   status: 'open' | 'closed';
 }
 
+// Helper: remove undefined fields to satisfy Firestore constraints
+function pruneUndefined<T extends Record<string, any>>(obj: T): T {
+  const out: Record<string, any> = {};
+  for (const [key, value] of Object.entries(obj)) {
+    if (value !== undefined) out[key] = value;
+  }
+  return out as T;
+}
+
 // Posts
 export const getPosts = async (limit = 20): Promise<Post[]> => {
   try {
@@ -104,12 +113,12 @@ export const getUserPosts = async (userId: string): Promise<Post[]> => {
 export const createPost = async (post: Omit<Post, 'timestamp'>): Promise<string | null> => {
   try {
     const postsRef = collection(db, 'posts');
-    const newPost = {
+    const newPost = pruneUndefined({
       ...post,
       timestamp: serverTimestamp(),
       likes: 0,
       comments: 0
-    };
+    });
     
     const docRef = await addDoc(postsRef, newPost);
     return docRef.id;
@@ -146,7 +155,7 @@ export const createOrUpdateUser = async (userId: string, userData: Partial<UserD
     
     if (userDoc.exists()) {
       // Update existing user
-      await updateDoc(userRef, userData);
+      await updateDoc(userRef, pruneUndefined(userData as Record<string, any>));
     } else {
       // Create new user with default values
       const defaultData: Partial<UserData> = {
@@ -161,7 +170,8 @@ export const createOrUpdateUser = async (userId: string, userData: Partial<UserD
         totalTrades: 0
       };
       
-      await setDoc(userRef, { ...defaultData, ...userData }, { merge: true });
+      const payload = pruneUndefined({ ...defaultData, ...userData } as Record<string, any>);
+      await setDoc(userRef, payload, { merge: true });
     }
     
     return true;
@@ -220,7 +230,7 @@ export const getClosedPositions = async (userId: string, max = 20): Promise<Trad
 export const createPosition = async (position: Omit<TradePosition, 'id'>): Promise<string | null> => {
   try {
     const positionsRef = collection(db, 'positions');
-    const docRef = await addDoc(positionsRef, position);
+    const docRef = await addDoc(positionsRef, pruneUndefined(position as Record<string, any>));
     return docRef.id;
   } catch (error) {
     console.error("Error creating position:", error);

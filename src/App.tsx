@@ -10,6 +10,7 @@ import { Trade } from './components/pages/Trade';
 import { Profile } from './components/pages/Profile';
 import { PostModal } from './components/PostModal';
 import { ProtectedRoute } from './components/ProtectedRoute';
+import { isUserProfileComplete } from './utils/profile';
 
 type Page = 'home' | 'explore' | 'portfolio' | 'trade' | 'profile';
 
@@ -24,7 +25,7 @@ function AppContent() {
     return saved ? JSON.parse(saved) : false;
   });
 
-  const { isLoading } = useFirestoreAuthContext();
+  const { isLoading, isAuthenticated, user } = useFirestoreAuthContext();
 
   // Effect to handle dark mode class and localStorage
   useEffect(() => {
@@ -44,6 +45,14 @@ function AppContent() {
     setCurrentUserId(userId || null);
     setCurrentPage('profile');
   };
+
+  // Enforce profile completion: redirect to Profile if authenticated but incomplete
+  useEffect(() => {
+    if (isAuthenticated && !isUserProfileComplete(user) && currentPage !== 'profile') {
+      setCurrentUserId(null);
+      setCurrentPage('profile');
+    }
+  }, [isAuthenticated, user, currentPage]);
 
   // Show loading state while Privy is initializing
   if (isLoading) {
@@ -90,6 +99,14 @@ function AppContent() {
           <Sidebar 
             currentPage={currentPage} 
             onPageChange={(page) => {
+              // Block navigation away if profile is incomplete
+              const profileComplete = isUserProfileComplete(user);
+              if (isAuthenticated && !profileComplete && page !== 'profile') {
+                // Enforce staying on Profile until completion
+                setCurrentPage('profile');
+                setCurrentUserId(null);
+                return;
+              }
               setCurrentPage(page);
               if (page === 'profile') {
                 setCurrentUserId(null); // Reset to own profile when clicking sidebar

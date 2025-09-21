@@ -35,7 +35,7 @@ export function Home({ onUserClick }: HomeProps) {
       
       {/* Firestore Posts */}
       <div className="mb-4">
-        <FirestorePostsList key={refreshPosts} />
+        <FirestorePostsList key={refreshPosts} mode={activeTab === 'friends' ? 'friends' : 'for-you'} />
       </div>
     </div>
   );

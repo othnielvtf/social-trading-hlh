@@ -39,6 +39,19 @@ export type Post = {
   };
 };
 
+// Get the list of user IDs that a user is following
+export const getFollowingIds = async (followerId: string): Promise<string[]> => {
+  try {
+    const followsRef = collection(db, 'follows');
+    const qFollows = query(followsRef, where('followerId', '==', followerId));
+    const qs = await getDocs(qFollows);
+    return qs.docs.map(d => (d.data() as any).followingId as string).filter(Boolean);
+  } catch (error) {
+    console.error(`Error fetching following list for ${followerId}:`, error);
+    return [];
+  }
+};
+
 
 export type UserData = {
   id: string;

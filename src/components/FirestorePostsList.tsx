@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useMemo } from 'react';
-import { getPosts, getUserPosts, Post } from '../utils/firestore';
+import { getPosts, getUserPosts, Post, getFollowingIds } from '../utils/firestore';
 import { useFirestoreAuthContext } from '../contexts/FirestoreAuthContext';
 import { Card } from './ui/card';
 import { Avatar } from './ui/avatar';
@@ -10,17 +10,35 @@ import { fetchAllMids } from '../utils/hyperliquid';
 interface FirestorePostsListProps {
   userId?: string;
   limit?: number;
+  mode?: 'for-you' | 'friends';
 }
 
 export const FirestorePostsList: React.FC<FirestorePostsListProps> = ({ 
   userId, 
-  limit = 10 
+  limit = 10,
+  mode = 'for-you',
 }) => {
   const [posts, setPosts] = useState<Post[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   
   const { isAuthenticated, user } = useFirestoreAuthContext();
+  const [followingIds, setFollowingIds] = useState<string[] | null>(null);
+
+  // Load following IDs (used for friends filter and for-you sorting)
+  useEffect(() => {
+    let cancelled = false;
+    (async () => {
+      if (!user?.id) { setFollowingIds([]); return; }
+      try {
+        const list = await getFollowingIds(user.id);
+        if (!cancelled) setFollowingIds(list);
+      } catch {
+        if (!cancelled) setFollowingIds([]);
+      }
+    })();
+    return () => { cancelled = true; };
+  }, [user?.id]);
 
   useEffect(() => {
     const fetchPosts = async () => {
@@ -29,15 +47,21 @@ export const FirestorePostsList: React.FC<FirestorePostsListProps> = ({
       
       try {
         let fetchedPosts: Post[];
-        
         if (userId) {
-          // Get posts for a specific user
           fetchedPosts = await getUserPosts(userId);
         } else {
-          // Get all posts
           fetchedPosts = await getPosts(limit);
         }
-        
+        if (mode === 'friends') {
+          const fset = new Set(followingIds || []);
+          fetchedPosts = fetchedPosts.filter(p => fset.has(p.userId));
+        } else if (mode === 'for-you' && followingIds) {
+          const fset = new Set(followingIds);
+          // stable followed-first: split then concat
+          const followed = fetchedPosts.filter(p => fset.has(p.userId));
+          const others = fetchedPosts.filter(p => !fset.has(p.userId));
+          fetchedPosts = [...followed, ...others];
+        }
         setPosts(fetchedPosts);
       } catch (err) {
         console.error('Error fetching posts:', err);
@@ -47,8 +71,10 @@ export const FirestorePostsList: React.FC<FirestorePostsListProps> = ({
       }
     };
     
+    // Wait for followingIds in both modes to apply filtering/sorting
+    if (followingIds === null) return;
     fetchPosts();
-  }, [userId, limit]);
+  }, [userId, limit, mode, followingIds]);
   
   if (loading) {
     return (

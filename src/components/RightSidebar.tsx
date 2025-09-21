@@ -1,10 +1,10 @@
 import React, { useEffect, useState } from 'react';
-import { TrendingUp, TrendingDown, UserPlus, MoreHorizontal } from 'lucide-react';
+import { TrendingUp, TrendingDown, UserPlus, MoreHorizontal, Loader2 } from 'lucide-react';
 import { Card } from './ui/card';
 import { Button } from './ui/button';
 import { Badge } from './ui/badge';
 import { Avatar } from './ui/avatar';
-import { getAllUsers, UserData, followUser } from '../utils/firestore';
+import { getAllUsers, UserData, followUser, unfollowUser, getFollowingIds } from '../utils/firestore';
 import { useFirestoreAuthContext } from '../contexts/FirestoreAuthContext';
 
 interface TopTrader {
@@ -132,6 +132,7 @@ export function RightSidebar({ currentPage, onUserClick }: RightSidebarProps) {
   const [users, setUsers] = useState<UserData[]>([]);
   const [loadingUsers, setLoadingUsers] = useState(true);
   const [followingSet, setFollowingSet] = useState<Set<string>>(new Set());
+  const [loadingFollow, setLoadingFollow] = useState<Record<string, boolean>>({});
   useEffect(() => {
     (async () => {
       setLoadingUsers(true);
@@ -140,6 +141,21 @@ export function RightSidebar({ currentPage, onUserClick }: RightSidebarProps) {
       setLoadingUsers(false);
     })();
   }, []);
+
+  // Initialize following set from Firestore so it persists across refreshes
+  useEffect(() => {
+    let cancelled = false;
+    (async () => {
+      if (!currentUser?.id) return;
+      try {
+        const ids = await getFollowingIds(currentUser.id);
+        if (!cancelled) setFollowingSet(new Set(ids));
+      } catch {
+        // ignore
+      }
+    })();
+    return () => { cancelled = true; };
+  }, [currentUser?.id]);
 
   return (
     <div className="w-80 p-4 space-y-4 sticky top-0 h-screen overflow-y-auto">
@@ -244,23 +260,46 @@ export function RightSidebar({ currentPage, onUserClick }: RightSidebarProps) {
                         <div className="text-xs text-muted-foreground truncate">@{u.username}</div>
                       </div>
                     </div>
+                    {u.id === currentUser?.id ? null : (
                     <Button 
                       size="sm" 
                       variant={followingSet.has(u.id) ? 'default' : 'outline'} 
                       className="shrink-0 text-xs"
+                      disabled={!!loadingFollow[u.id]}
                       onClick={async (e) => {
                         e.stopPropagation();
                         if (!currentUser?.id) return;
-                        if (followingSet.has(u.id)) return; // simple guard (no unfollow yet)
-                        const ok = await followUser(currentUser.id, u.id);
-                        if (ok) {
-                          setFollowingSet(prev => new Set(prev).add(u.id));
-                          setUsers(prev => prev.map(x => x.id === u.id ? { ...x, followers: (x.followers || 0) + 1 } as UserData : x));
+                        setLoadingFollow(prev => ({ ...prev, [u.id]: true }));
+                        if (followingSet.has(u.id)) {
+                          // Unfollow
+                          const ok = await unfollowUser(currentUser.id, u.id);
+                          if (ok) {
+                            setFollowingSet(prev => { const s = new Set(prev); s.delete(u.id); return s; });
+                            setUsers(prev => prev.map(x => x.id === u.id ? { ...x, followers: Math.max(0, (x.followers || 0) - 1) } as UserData : x));
+                            window.dispatchEvent(new CustomEvent('follow-changed'));
+                          }
+                        } else {
+                          // Follow
+                          const ok = await followUser(currentUser.id, u.id);
+                          if (ok) {
+                            setFollowingSet(prev => new Set(prev).add(u.id));
+                            setUsers(prev => prev.map(x => x.id === u.id ? { ...x, followers: (x.followers || 0) + 1 } as UserData : x));
+                            window.dispatchEvent(new CustomEvent('follow-changed'));
+                          }
                         }
+                        setLoadingFollow(prev => ({ ...prev, [u.id]: false }));
                       }}
                     >
-                      {followingSet.has(u.id) ? 'Following' : 'Follow'}
+                      {loadingFollow[u.id] ? (
+                        <span className="inline-flex items-center gap-1">
+                          <Loader2 className="h-3 w-3 animate-spin" />
+                          {followingSet.has(u.id) ? 'Updating' : 'Following'}
+                        </span>
+                      ) : (
+                        followingSet.has(u.id) ? 'Following' : 'Follow'
+                      )}
                     </Button>
+                    )}
                   </div>
                 </div>
               ))

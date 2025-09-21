@@ -12,6 +12,7 @@ import { PostModal } from './components/PostModal';
 import { ProtectedRoute } from './components/ProtectedRoute';
 import { isUserProfileComplete } from './utils/profile';
 import { ProfileCompletionModal } from './components/ProfileCompletionModal';
+import { TradingModal } from './components/TradingModal';
 
 type Page = 'home' | 'explore' | 'portfolio' | 'trade' | 'profile';
 
@@ -29,6 +30,7 @@ function AppContent() {
   });
 
   const { isLoading, isAuthenticated, user } = useFirestoreAuthContext();
+  const [isTradeModalOpen, setIsTradeModalOpen] = useState(false);
 
   // Effect to handle dark mode class and localStorage
   useEffect(() => {
@@ -106,7 +108,8 @@ function AppContent() {
             onPageChange={(page) => {
               // If profile incomplete, only block navigation to protected pages
               const profileComplete = isUserProfileComplete(user);
-              const isProtected = page === 'portfolio' || page === 'trade';
+              // Allow Trade page even if profile is incomplete; still block Portfolio
+              const isProtected = page === 'portfolio';
               if (isAuthenticated && !profileComplete && isProtected) {
                 setCurrentPage('profile');
                 setCurrentUserId(null);
@@ -119,6 +122,7 @@ function AppContent() {
               }
             }}
             onPostClick={() => setIsPostModalOpen(true)}
+            onTradeClick={() => setIsTradeModalOpen(true)}
             isDarkMode={isDarkMode}
             onToggleDarkMode={toggleDarkMode}
           />
@@ -133,7 +137,7 @@ function AppContent() {
         onClose={() => setIsPostModalOpen(false)} 
       />
       <ProfileCompletionModal 
-        isOpen={showProfileBlockModal}
+        isOpen={showProfileBlockModal && currentPage !== 'trade'}
         onClose={() => setShowProfileBlockModal(false)}
         onGoToProfile={() => {
           setShowProfileBlockModal(false);
@@ -141,6 +145,7 @@ function AppContent() {
           setCurrentUserId(null);
         }}
       />
+      <TradingModal isOpen={isTradeModalOpen} onClose={() => setIsTradeModalOpen(false)} />
     </div>
   );
 }

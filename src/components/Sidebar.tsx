@@ -17,9 +17,10 @@ interface SidebarProps {
   onPostClick: () => void;
   isDarkMode: boolean;
   onToggleDarkMode: () => void;
+  onTradeClick?: () => void;
 }
 
-export function Sidebar({ currentPage, onPageChange, onPostClick, isDarkMode, onToggleDarkMode }: SidebarProps) {
+export function Sidebar({ currentPage, onPageChange, onPostClick, isDarkMode, onToggleDarkMode, onTradeClick }: SidebarProps) {
   const [isDropdownOpen, setIsDropdownOpen] = useState(false);
   const [isConnecting, setIsConnecting] = useState(false);
   const dropdownRef = useRef<HTMLDivElement>(null);
@@ -79,17 +80,13 @@ export function Sidebar({ currentPage, onPageChange, onPostClick, isDarkMode, on
           return (
             <button
               key={item.id}
-              onClick={() => item.id !== 'trade' && onPageChange(item.id)}
+              onClick={() => item.id === 'trade' ? onTradeClick && onTradeClick() : onPageChange(item.id)}
               className={`w-full flex items-center gap-4 px-3 py-3 rounded-full transition-colors text-left ${
-                item.id === 'trade' 
-                  ? 'opacity-40 cursor-not-allowed' 
-                  : isActive 
-                    ? 'bg-accent' 
-                    : 'hover:bg-accent/50'
+                isActive ? 'bg-accent' : 'hover:bg-accent/50'
               }`}
             >
-              <Icon size={24} className={item.id === 'trade' ? 'text-muted-foreground' : isActive ? 'text-foreground' : 'text-foreground'} />
-              <span className={`text-base hidden xl:block ${item.id === 'trade' ? 'text-muted-foreground' : ''}`}>{item.label}</span>
+              <Icon size={24} className={'text-foreground'} />
+              <span className={`text-base hidden xl:block`}>{item.label}</span>
             </button>
           );
         })}

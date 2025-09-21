@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useEffect, useState } from 'react';
 import { TrendingUp, TrendingDown, DollarSign, Percent, Calculator } from 'lucide-react';
 import { Card, CardContent, CardHeader, CardTitle } from '../ui/card';
 import { Button } from '../ui/button';
@@ -7,6 +7,7 @@ import { Label } from '../ui/label';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '../ui/select';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '../ui/tabs';
 import { Badge } from '../ui/badge';
+import { TradingModal } from '../TradingModal';
 
 interface MarketData {
   symbol: string;
@@ -55,13 +56,21 @@ export function Trade() {
   const [size, setSize] = useState('');
   const [price, setPrice] = useState('');
   const [leverage, setLeverage] = useState('1');
+  const [isTradeModalOpen, setIsTradeModalOpen] = useState(false);
 
   const selectedMarketData = mockMarketData.find(m => m.symbol === selectedMarket) || mockMarketData[0];
 
+  // Do not auto-open; user can open from header button
+
   return (
     <div className="h-screen flex flex-col">
+      {/* Trading Modal overlay */}
+      <TradingModal isOpen={isTradeModalOpen} onClose={() => setIsTradeModalOpen(false)} />
       <div className="border-b border-border p-4">
-        <h2 className="text-xl">Trade</h2>
+        <div className="flex items-center justify-between">
+          <h2 className="text-xl">Trade</h2>
+          <Button size="sm" variant="outline" onClick={() => setIsTradeModalOpen(true)}>Open Trading Modal</Button>
+        </div>
       </div>
       
       <div className="flex-1 overflow-hidden">

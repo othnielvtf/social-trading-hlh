@@ -134,26 +134,32 @@ export const CreateFirestorePost: React.FC<CreateFirestorePostProps> = ({
                     ))}
                   </select>
                   <div className="flex gap-2">
-                    <Button
+                    <button
                       type="button"
-                      variant={tradeType === 'long' ? 'default' : 'outline'}
-                      size="sm"
-                      className={tradeType === 'long' ? 'bg-green-600 hover:bg-green-700' : ''}
+                      aria-pressed={tradeType === 'long'}
                       onClick={() => setTradeType('long')}
+                      className={`px-4 py-1.5 rounded-full font-semibold transition-colors focus:outline-none focus-visible:ring-2 focus-visible:ring-offset-2 focus-visible:ring-green-400 ring-offset-background ${
+                        tradeType === 'long'
+                          ? 'bg-green-600 text-white hover:bg-green-700'
+                          : 'bg-green-600/80 text-white hover:bg-green-600/90 opacity-80'
+                      }`}
+                      style={{ backgroundColor: tradeType === 'long' ? '#16a34a' : 'rgba(22,163,74,0.8)' }}
                     >
-                      <TrendingUp className="w-4 h-4 mr-1" />
-                      Long
-                    </Button>
-                    <Button
+                      <span className="inline-flex items-center"><TrendingUp className="w-4 h-4 mr-1" /> Long</span>
+                    </button>
+                    <button
                       type="button"
-                      variant={tradeType === 'short' ? 'default' : 'outline'}
-                      size="sm"
-                      className={tradeType === 'short' ? 'bg-red-600 hover:bg-red-700' : ''}
+                      aria-pressed={tradeType === 'short'}
                       onClick={() => setTradeType('short')}
+                      className={`px-4 py-1.5 rounded-full font-semibold transition-colors focus:outline-none focus-visible:ring-2 focus-visible:ring-offset-2 focus-visible:ring-red-400 ring-offset-background ${
+                        tradeType === 'short'
+                          ? 'bg-red-600 text-white hover:bg-red-700'
+                          : 'bg-red-600/80 text-white hover:bg-red-600/90 opacity-80'
+                      }`}
+                      style={{ backgroundColor: tradeType === 'short' ? '#dc2626' : 'rgba(220,38,38,0.8)' }}
                     >
-                      <TrendingDown className="w-4 h-4 mr-1" />
-                      Short
-                    </Button>
+                      <span className="inline-flex items-center"><TrendingDown className="w-4 h-4 mr-1" /> Short</span>
+                    </button>
                   </div>
                   <input
                     type="number"

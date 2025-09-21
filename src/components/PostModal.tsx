@@ -211,10 +211,11 @@ export function PostModal({ isOpen, onClose }: PostModalProps) {
                     <div className="flex items-center gap-2">
                       <Button
                         type="button"
-                        className={`px-3 rounded-full ring-1 ring-transparent ${
+                        aria-pressed={selectedDirection === 'long'}
+                        className={`px-4 py-1.5 rounded-full font-semibold transition-colors ${
                           selectedDirection === 'long'
-                            ? 'bg-green-600 text-white hover:bg-green-700'
-                            : 'bg-transparent text-foreground border border-border hover:bg-accent/50'
+                            ? 'bg-green-600 text-white hover:bg-green-700 ring-2 ring-offset-2 ring-green-400 ring-offset-background'
+                            : 'bg-green-600/70 text-white hover:bg-green-600 opacity-70'
                         }`}
                         onClick={() => setSelectedDirection('long')}
                         size="sm"
@@ -223,10 +224,11 @@ export function PostModal({ isOpen, onClose }: PostModalProps) {
                       </Button>
                       <Button
                         type="button"
-                        className={`px-3 rounded-full ring-1 ring-transparent ${
+                        aria-pressed={selectedDirection === 'short'}
+                        className={`px-4 py-1.5 rounded-full font-semibold transition-colors ${
                           selectedDirection === 'short'
-                            ? 'bg-red-600 text-white hover:bg-red-700'
-                            : 'bg-transparent text-foreground border border-border hover:bg-accent/50'
+                            ? 'bg-red-600 text-white hover:bg-red-700 ring-2 ring-offset-2 ring-red-400 ring-offset-background'
+                            : 'bg-red-600/70 text-white hover:bg-red-600 opacity-70'
                         }`}
                         onClick={() => setSelectedDirection('short')}
                         size="sm"

@@ -8,6 +8,7 @@ import { Badge } from './ui/badge';
 import { Avatar } from './ui/avatar';
 import { useFirestoreAuthContext } from '../contexts/FirestoreAuthContext';
 import { createPost } from '../utils/firestore';
+import { fetchAllMids } from '../utils/hyperliquid';
 
 interface PostModalProps {
   isOpen: boolean;
@@ -67,6 +68,7 @@ export function PostModal({ isOpen, onClose }: PostModalProps) {
   const [selectedDirection, setSelectedDirection] = useState<'long' | 'short'>('long');
   const [price, setPrice] = useState<string>('');
   const [size, setSize] = useState<string>('');
+  const [isPrefilling, setIsPrefilling] = useState(false);
 
   const handleSubmit = async () => {
     if (!isAuthenticated || !user) {
@@ -191,15 +193,15 @@ export function PostModal({ isOpen, onClose }: PostModalProps) {
 
               {/* Manual Add: Instrument + Direction + Price */}
               <div className="space-y-3">
-                <div className="mt-2 p-3 border border-border rounded-lg">
-                  <div className="text-sm font-medium mb-2">Add a trade manually</div>
-                  <div className="flex flex-col sm:flex-row gap-3 sm:items-center">
+                <div className="mt-2 p-4 border border-border rounded-lg bg-card/50">
+                  <div className="text-sm font-medium mb-3">Add Trade Details</div>
+                  <div className="flex flex-col sm:flex-row gap-3 sm:items-end">
                     <div className="flex-1">
                       <label className="text-xs text-muted-foreground">Instrument</label>
                       <select
                         value={selectedInstrument}
                         onChange={(e) => setSelectedInstrument(e.target.value)}
-                        className="mt-1 w-full border border-border rounded-md bg-background p-2 text-sm"
+                        className="mt-1 w-full border border-border rounded-md bg-background p-2 text-sm focus:outline-none focus:ring-2 focus:ring-primary/50"
                       >
                         {instrumentOptions.map((opt) => (
                           <option key={opt} value={opt}>{opt}</option>
@@ -209,8 +211,11 @@ export function PostModal({ isOpen, onClose }: PostModalProps) {
                     <div className="flex items-center gap-2">
                       <Button
                         type="button"
-                        variant={selectedDirection === 'long' ? 'default' : 'outline'}
-                        className={selectedDirection === 'long' ? 'bg-green-600 hover:bg-green-700 text-white' : ''}
+                        className={`px-3 rounded-full ring-1 ring-transparent ${
+                          selectedDirection === 'long'
+                            ? 'bg-green-600 text-white hover:bg-green-700'
+                            : 'bg-transparent text-foreground border border-border hover:bg-accent/50'
+                        }`}
                         onClick={() => setSelectedDirection('long')}
                         size="sm"
                       >
@@ -218,8 +223,11 @@ export function PostModal({ isOpen, onClose }: PostModalProps) {
                       </Button>
                       <Button
                         type="button"
-                        variant={selectedDirection === 'short' ? 'default' : 'outline'}
-                        className={selectedDirection === 'short' ? 'bg-red-600 hover:bg-red-700 text-white' : ''}
+                        className={`px-3 rounded-full ring-1 ring-transparent ${
+                          selectedDirection === 'short'
+                            ? 'bg-red-600 text-white hover:bg-red-700'
+                            : 'bg-transparent text-foreground border border-border hover:bg-accent/50'
+                        }`}
                         onClick={() => setSelectedDirection('short')}
                         size="sm"
                       >
@@ -230,15 +238,37 @@ export function PostModal({ isOpen, onClose }: PostModalProps) {
                   <div className="mt-3 grid grid-cols-1 sm:grid-cols-2 gap-3">
                     <div>
                       <label className="text-xs text-muted-foreground">Price</label>
-                      <input
-                        type="number"
-                        min="0"
-                        step="0.00000001"
-                        placeholder="e.g. 42500"
-                        value={price}
-                        onChange={(e) => setPrice(e.target.value)}
-                        className="mt-1 w-full border border-border rounded-md bg-background p-2 text-sm"
-                      />
+                      <div className="mt-1 flex gap-2">
+                        <input
+                          type="number"
+                          min="0"
+                          step="0.00000001"
+                          placeholder="e.g. 42500"
+                          value={price}
+                          onChange={(e) => setPrice(e.target.value)}
+                          className="flex-1 border border-border rounded-md bg-background p-2 text-sm focus:outline-none focus:ring-2 focus:ring-primary/50"
+                        />
+                        <Button
+                          type="button"
+                          size="sm"
+                          disabled={isPrefilling}
+                          onClick={async () => {
+                            try {
+                              setIsPrefilling(true);
+                              const mids = await fetchAllMids('');
+                              const base = selectedInstrument.replace(/-PERPS?$/i, '');
+                              const midStr = mids[selectedInstrument] || mids[base];
+                              if (midStr) setPrice(String(midStr));
+                            } finally {
+                              setIsPrefilling(false);
+                            }
+                          }}
+                          className="whitespace-nowrap"
+                        >
+                          {isPrefilling ? 'Prefilling…' : 'Use current'}
+                        </Button>
+                      </div>
+                      <p className="mt-1 text-xs text-muted-foreground">You can prefill with the current mid price.</p>
                     </div>
                     <div>
                       <label className="text-xs text-muted-foreground">Size (optional)</label>
@@ -249,7 +279,7 @@ export function PostModal({ isOpen, onClose }: PostModalProps) {
                         placeholder="e.g. 1.5"
                         value={size}
                         onChange={(e) => setSize(e.target.value)}
-                        className="mt-1 w-full border border-border rounded-md bg-background p-2 text-sm"
+                        className="mt-1 w-full border border-border rounded-md bg-background p-2 text-sm focus:outline-none focus:ring-2 focus:ring-primary/50"
                       />
                     </div>
                   </div>

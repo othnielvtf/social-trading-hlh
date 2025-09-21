@@ -161,10 +161,10 @@ export const FirestorePost: React.FC<FirestorePostProps> = ({ post }) => {
               <div className="flex items-center gap-2">
                 <Badge 
                   variant="outline"
-                  className={`text-xs ${
+                  className={`text-xs font-medium border-transparent ${
                     post.trade.type === 'long' 
-                      ? 'bg-green-100 text-green-700 border-green-200 dark:bg-green-900/20 dark:text-green-400 dark:border-green-800/30' 
-                      : 'bg-red-100 text-red-700 border-red-200 dark:bg-red-900/20 dark:text-red-400 dark:border-red-800/30'
+                      ? 'bg-green-600 text-white dark:bg-green-500 dark:text-black' 
+                      : 'bg-red-600 text-white dark:bg-red-500 dark:text-black'
                   }`}
                 >
                   {post.trade.type === 'long' ? <TrendingUp className="w-3 h-3 mr-1" /> : <TrendingDown className="w-3 h-3 mr-1" />}

@@ -6,7 +6,8 @@ import { Textarea } from './ui/textarea';
 import { Card } from './ui/card';
 import { Badge } from './ui/badge';
 import { Avatar } from './ui/avatar';
-import { usePrivyAuth } from '../contexts/PrivyAuthContext';
+import { useFirestoreAuthContext } from '../contexts/FirestoreAuthContext';
+import { createPost } from '../utils/firestore';
 
 interface PostModalProps {
   isOpen: boolean;
@@ -53,16 +54,86 @@ const mockTradingActivity = [
 export function PostModal({ isOpen, onClose }: PostModalProps) {
   const [content, setContent] = useState('');
   const [selectedTrade, setSelectedTrade] = useState<typeof mockTradingActivity[0] | null>(null);
-  const { isAuthenticated, user, login } = usePrivyAuth();
+  const { isAuthenticated, user, privyUser, login } = useFirestoreAuthContext();
+  const [isSubmitting, setIsSubmitting] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const instrumentOptions = [
+    'BTC', 'BTC-PERPS',
+    'HYPE', 'HYPE-PERPS',
+    'SOL', 'SOL-PERPS',
+    'ETH', 'ETH-PERPS',
+  ];
+  const [selectedInstrument, setSelectedInstrument] = useState<string>(instrumentOptions[0]);
+  const [selectedDirection, setSelectedDirection] = useState<'long' | 'short'>('long');
+  const [price, setPrice] = useState<string>('');
+  const [size, setSize] = useState<string>('');
 
-  const handleSubmit = () => {
-    // In a real app, this would submit to your backend
-    console.log('Posting:', { content, selectedTrade, userId: user?.id });
-    
-    // Reset form
-    setContent('');
-    setSelectedTrade(null);
-    onClose();
+  const handleSubmit = async () => {
+    if (!isAuthenticated || !user) {
+      setError('You must be logged in to create a post');
+      return;
+    }
+    if (!content.trim()) {
+      setError('Post content cannot be empty');
+      return;
+    }
+    // Ensure a trade exists; if not, try to synthesize one from current inputs
+    let tradeToAttach = selectedTrade;
+    if (!tradeToAttach && price) {
+      const parsedPrice = parseFloat(price);
+      const parsedSize = parseFloat(size || '0');
+      if (Number.isFinite(parsedPrice) && parsedPrice > 0) {
+        tradeToAttach = {
+          id: -1,
+          symbol: selectedInstrument,
+          type: selectedDirection,
+          entry: parsedPrice,
+          current: parsedPrice,
+          size: Number.isFinite(parsedSize) ? parsedSize : 0,
+          pnl: 0,
+          pnlPercent: 0,
+          timestamp: 'now'
+        } as typeof mockTradingActivity[0];
+      }
+    }
+    if (!tradeToAttach) {
+      setError('Please attach a trade (instrument and price)');
+      return;
+    }
+
+    setIsSubmitting(true);
+    setError(null);
+    try {
+      const tradeObj: any = {
+        symbol: tradeToAttach.symbol,
+        type: tradeToAttach.type,
+        entry: tradeToAttach.entry,
+      };
+      if (typeof tradeToAttach.size === 'number' && tradeToAttach.size > 0) {
+        tradeObj.size = tradeToAttach.size;
+      }
+      const postData = {
+        userId: user.id,
+        userName: user.name || privyUser?.name || 'Anonymous User',
+        userAvatar: user.avatar || privyUser?.avatar,
+        content: content.trim(),
+        trade: tradeObj,
+      };
+      const postId = await createPost(postData);
+      if (!postId) {
+        setError('Failed to create post. Please try again.');
+        return;
+      }
+      // Reset
+      setContent('');
+      setSelectedTrade(null);
+      onClose();
+    } catch (e) {
+      console.error('Error creating post from PostModal:', e);
+      setError('An error occurred while creating your post.');
+    } finally {
+      setIsSubmitting(false);
+    }
   };
 
   const isValid = content.trim().length > 0;
@@ -118,60 +189,100 @@ export function PostModal({ isOpen, onClose }: PostModalProps) {
                 className="min-h-[120px] resize-none border-none text-xl placeholder:text-muted-foreground focus:ring-0 p-3"
               />
 
-              {/* Trading Activity Section */}
+              {/* Manual Add: Instrument + Direction + Price */}
               <div className="space-y-3">
-                <div className="text-sm text-muted-foreground">
-                  Select a trade to add commentary:
-                </div>
-                
-                <div className="space-y-2 max-h-48 overflow-y-auto">
-                  {mockTradingActivity.map((trade) => (
-                    <Card 
-                      key={trade.id} 
-                      className={`p-3 cursor-pointer transition-colors border ${
-                        selectedTrade?.id === trade.id 
-                          ? 'border-primary bg-primary/5' 
-                          : 'hover:bg-accent/50'
-                      }`}
-                      onClick={() => setSelectedTrade(selectedTrade?.id === trade.id ? null : trade)}
+                <div className="mt-2 p-3 border border-border rounded-lg">
+                  <div className="text-sm font-medium mb-2">Add a trade manually</div>
+                  <div className="flex flex-col sm:flex-row gap-3 sm:items-center">
+                    <div className="flex-1">
+                      <label className="text-xs text-muted-foreground">Instrument</label>
+                      <select
+                        value={selectedInstrument}
+                        onChange={(e) => setSelectedInstrument(e.target.value)}
+                        className="mt-1 w-full border border-border rounded-md bg-background p-2 text-sm"
+                      >
+                        {instrumentOptions.map((opt) => (
+                          <option key={opt} value={opt}>{opt}</option>
+                        ))}
+                      </select>
+                    </div>
+                    <div className="flex items-center gap-2">
+                      <Button
+                        type="button"
+                        variant={selectedDirection === 'long' ? 'default' : 'outline'}
+                        className={selectedDirection === 'long' ? 'bg-green-600 hover:bg-green-700 text-white' : ''}
+                        onClick={() => setSelectedDirection('long')}
+                        size="sm"
+                      >
+                        <TrendingUp className="w-3 h-3 mr-1" /> Long
+                      </Button>
+                      <Button
+                        type="button"
+                        variant={selectedDirection === 'short' ? 'default' : 'outline'}
+                        className={selectedDirection === 'short' ? 'bg-red-600 hover:bg-red-700 text-white' : ''}
+                        onClick={() => setSelectedDirection('short')}
+                        size="sm"
+                      >
+                        <TrendingDown className="w-3 h-3 mr-1" /> Short
+                      </Button>
+                    </div>
+                  </div>
+                  <div className="mt-3 grid grid-cols-1 sm:grid-cols-2 gap-3">
+                    <div>
+                      <label className="text-xs text-muted-foreground">Price</label>
+                      <input
+                        type="number"
+                        min="0"
+                        step="0.00000001"
+                        placeholder="e.g. 42500"
+                        value={price}
+                        onChange={(e) => setPrice(e.target.value)}
+                        className="mt-1 w-full border border-border rounded-md bg-background p-2 text-sm"
+                      />
+                    </div>
+                    <div>
+                      <label className="text-xs text-muted-foreground">Size (optional)</label>
+                      <input
+                        type="number"
+                        min="0"
+                        step="0.00000001"
+                        placeholder="e.g. 1.5"
+                        value={size}
+                        onChange={(e) => setSize(e.target.value)}
+                        className="mt-1 w-full border border-border rounded-md bg-background p-2 text-sm"
+                      />
+                    </div>
+                  </div>
+                  <div className="mt-3 flex justify-end">
+                    <Button
+                      type="button"
+                      onClick={() => {
+                        const parsedPrice = parseFloat(price);
+                        const parsedSize = parseFloat(size || '0');
+                        if (!selectedInstrument || !Number.isFinite(parsedPrice) || parsedPrice <= 0) return;
+                        setSelectedTrade({
+                          id: -1,
+                          symbol: selectedInstrument,
+                          type: selectedDirection,
+                          entry: parsedPrice,
+                          current: parsedPrice,
+                          size: Number.isFinite(parsedSize) ? parsedSize : 0,
+                          pnl: 0,
+                          pnlPercent: 0,
+                          timestamp: 'now'
+                        });
+                      }}
+                      size="sm"
+                      className="rounded-full"
                     >
-                      <div className="flex items-center justify-between">
-                        <div className="flex items-center gap-2">
-                          <Badge 
-                            variant="outline"
-                            className={`text-xs ${
-                              trade.type === 'long' 
-                                ? 'bg-green-100 text-green-700 border-green-200 dark:bg-green-900/20 dark:text-green-400 dark:border-green-800/30' 
-                                : 'bg-red-100 text-red-700 border-red-200 dark:bg-red-900/20 dark:text-red-400 dark:border-red-800/30'
-                            }`}
-                          >
-                            {trade.type === 'long' ? (
-                              <TrendingUp className="w-3 h-3 mr-1" />
-                            ) : (
-                              <TrendingDown className="w-3 h-3 mr-1" />
-                            )}
-                            {trade.type.toUpperCase()}
-                          </Badge>
-                          <span className="text-sm">{trade.symbol}</span>
-                          <span className="text-xs text-muted-foreground">{trade.timestamp}</span>
-                        </div>
-                        <div className={`text-sm ${trade.pnl > 0 ? 'text-green-600' : 'text-red-600'}`}>
-                          {trade.pnl > 0 ? '+' : ''}${Math.abs(trade.pnl).toLocaleString()}
-                          <span className="text-xs ml-1">
-                            ({trade.pnl > 0 ? '+' : ''}{trade.pnlPercent}%)
-                          </span>
-                        </div>
-                      </div>
-                      
-                      <div className="grid grid-cols-3 gap-4 mt-2 text-xs text-muted-foreground">
-                        <div>Entry: ${trade.entry.toLocaleString()}</div>
-                        <div>Current: ${trade.current.toLocaleString()}</div>
-                        <div>Size: {trade.size}</div>
-                      </div>
-                    </Card>
-                  ))}
+                      Attach
+                    </Button>
+                  </div>
                 </div>
               </div>
+              {error && (
+                <div className="text-sm text-destructive">{error}</div>
+              )}
             </div>
           </div>
 

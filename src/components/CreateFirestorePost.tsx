@@ -17,10 +17,16 @@ export const CreateFirestorePost: React.FC<CreateFirestorePostProps> = ({
 }) => {
   const [content, setContent] = useState('');
   const [isAddingTrade, setIsAddingTrade] = useState(false);
-  const [tradeSymbol, setTradeSymbol] = useState('');
+  const instrumentOptions = [
+    'BTC', 'BTC-PERPS',
+    'HYPE', 'HYPE-PERPS',
+    'SOL', 'SOL-PERPS',
+    'ETH', 'ETH-PERPS',
+  ];
+  const [tradeInstrument, setTradeInstrument] = useState<string>(instrumentOptions[0]);
   const [tradeType, setTradeType] = useState<'long' | 'short'>('long');
-  const [tradePnl, setTradePnl] = useState('');
-  const [tradePnlPercent, setTradePnlPercent] = useState('');
+  const [tradePrice, setTradePrice] = useState('');
+  const [tradeSize, setTradeSize] = useState('');
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
   
@@ -48,14 +54,20 @@ export const CreateFirestorePost: React.FC<CreateFirestorePostProps> = ({
         userName: user.name || privyUser?.name || 'Anonymous User',
         userAvatar: user.avatar || privyUser?.avatar,
         content: content.trim(),
-        ...(isAddingTrade && tradeSymbol.trim() && tradePnl && tradePnlPercent ? {
-          trade: {
-            symbol: tradeSymbol.trim().toUpperCase(),
+        ...(isAddingTrade && tradePrice ? (() => {
+          const priceNum = parseFloat(tradePrice);
+          const sizeNum = parseFloat(tradeSize || '');
+          if (!Number.isFinite(priceNum) || priceNum <= 0) return {};
+          const trade: any = {
+            symbol: tradeInstrument,
             type: tradeType,
-            pnl: parseFloat(tradePnl),
-            pnlPercent: parseFloat(tradePnlPercent)
+            entry: priceNum,
+          };
+          if (Number.isFinite(sizeNum) && sizeNum > 0) {
+            trade.size = sizeNum;
           }
-        } : {})
+          return { trade };
+        })() : {})
       };
       
       const postId = await createPost(postData);
@@ -64,10 +76,10 @@ export const CreateFirestorePost: React.FC<CreateFirestorePostProps> = ({
         // Reset form
         setContent('');
         setIsAddingTrade(false);
-        setTradeSymbol('');
+        setTradeInstrument(instrumentOptions[0]);
         setTradeType('long');
-        setTradePnl('');
-        setTradePnlPercent('');
+        setTradePrice('');
+        setTradeSize('');
         
         // Notify parent component
         if (onPostCreated) {
@@ -111,14 +123,16 @@ export const CreateFirestorePost: React.FC<CreateFirestorePostProps> = ({
             {isAddingTrade && (
               <div className="mb-4 p-3 bg-accent/30 rounded-md">
                 <div className="text-sm font-medium mb-2">Add Trade Details</div>
-                <div className="grid grid-cols-2 gap-2 mb-2">
-                  <input
-                    type="text"
-                    placeholder="Symbol (e.g., BTC-USD)"
-                    value={tradeSymbol}
-                    onChange={(e) => setTradeSymbol(e.target.value)}
+                <div className="grid grid-cols-1 md:grid-cols-3 gap-2 mb-2">
+                  <select
+                    value={tradeInstrument}
+                    onChange={(e) => setTradeInstrument(e.target.value)}
                     className="px-3 py-1 rounded-md border border-border bg-background"
-                  />
+                  >
+                    {instrumentOptions.map(opt => (
+                      <option key={opt} value={opt}>{opt}</option>
+                    ))}
+                  </select>
                   <div className="flex gap-2">
                     <Button
                       type="button"
@@ -141,20 +155,20 @@ export const CreateFirestorePost: React.FC<CreateFirestorePostProps> = ({
                       Short
                     </Button>
                   </div>
-                </div>
-                <div className="grid grid-cols-2 gap-2">
                   <input
                     type="number"
-                    placeholder="P&L ($)"
-                    value={tradePnl}
-                    onChange={(e) => setTradePnl(e.target.value)}
+                    placeholder="Price"
+                    value={tradePrice}
+                    onChange={(e) => setTradePrice(e.target.value)}
                     className="px-3 py-1 rounded-md border border-border bg-background"
                   />
+                </div>
+                <div className="grid grid-cols-1 md:grid-cols-3 gap-2">
                   <input
                     type="number"
-                    placeholder="P&L (%)"
-                    value={tradePnlPercent}
-                    onChange={(e) => setTradePnlPercent(e.target.value)}
+                    placeholder="Size (optional)"
+                    value={tradeSize}
+                    onChange={(e) => setTradeSize(e.target.value)}
                     className="px-3 py-1 rounded-md border border-border bg-background"
                   />
                 </div>

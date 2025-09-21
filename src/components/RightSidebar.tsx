@@ -1,9 +1,11 @@
-import React from 'react';
+import React, { useEffect, useState } from 'react';
 import { TrendingUp, TrendingDown, UserPlus, MoreHorizontal } from 'lucide-react';
 import { Card } from './ui/card';
 import { Button } from './ui/button';
 import { Badge } from './ui/badge';
 import { Avatar } from './ui/avatar';
+import { getAllUsers, UserData } from '../utils/firestore';
+import { useFirestoreAuthContext } from '../contexts/FirestoreAuthContext';
 
 interface TopTrader {
   id: string;
@@ -126,6 +128,18 @@ export function RightSidebar({ currentPage, onUserClick }: RightSidebarProps) {
     return null;
   }
 
+  const { user: currentUser } = useFirestoreAuthContext();
+  const [users, setUsers] = useState<UserData[]>([]);
+  const [loadingUsers, setLoadingUsers] = useState(true);
+  useEffect(() => {
+    (async () => {
+      setLoadingUsers(true);
+      const list = await getAllUsers(50);
+      setUsers(list);
+      setLoadingUsers(false);
+    })();
+  }, []);
+
   return (
     <div className="w-80 p-4 space-y-4 sticky top-0 h-screen overflow-y-auto">
       {/* Top Traders Today */}
@@ -207,32 +221,40 @@ export function RightSidebar({ currentPage, onUserClick }: RightSidebarProps) {
           <h3 className="text-lg">Who to follow</h3>
         </div>
         <div className="divide-y divide-border">
-          {suggestedTraders.map((trader) => (
-            <div key={trader.id} className="p-4 hover:bg-accent/50 transition-colors">
-              <div className="flex items-center justify-between">
-                <div 
-                  className="flex items-center gap-3 min-w-0 flex-1 cursor-pointer"
-                  onClick={() => onUserClick && onUserClick(trader.username)}
-                >
-                  <Avatar className="w-10 h-10">
-                    <img src={trader.avatar} alt={trader.name} className="w-full h-full object-cover rounded-full" />
-                  </Avatar>
-                  <div className="min-w-0 flex-1">
-                    <div className="text-sm truncate">{trader.name}</div>
-                    <div className="text-xs text-muted-foreground truncate">@{trader.username}</div>
+          {loadingUsers ? (
+            <div className="p-4 text-sm text-muted-foreground">Loading users…</div>
+          ) : users.length === 0 ? (
+            <div className="p-4 text-sm text-muted-foreground">No users found.</div>
+          ) : (
+            users
+              .filter(u => !currentUser || u.id !== currentUser.id)
+              .map((u) => (
+                <div key={u.id} className="p-4 hover:bg-accent/50 transition-colors">
+                  <div className="flex items-center justify-between">
+                    <div 
+                      className="flex items-center gap-3 min-w-0 flex-1 cursor-pointer"
+                      onClick={() => onUserClick && onUserClick(u.id)}
+                    >
+                      <Avatar className="w-10 h-10">
+                        <img src={u.avatar || 'https://www.gravatar.com/avatar/00000000000000000000000000000000?d=identicon&s=64'} alt={u.name || u.username} className="w-full h-full object-cover rounded-full" />
+                      </Avatar>
+                      <div className="min-w-0 flex-1">
+                        <div className="text-sm truncate">{u.name || u.username}</div>
+                        <div className="text-xs text-muted-foreground truncate">@{u.username}</div>
+                      </div>
+                    </div>
+                    <Button 
+                      size="sm" 
+                      variant="outline" 
+                      className="shrink-0 text-xs"
+                      onClick={(e) => e.stopPropagation()}
+                    >
+                      Follow
+                    </Button>
                   </div>
                 </div>
-                <Button 
-                  size="sm" 
-                  variant="outline" 
-                  className="shrink-0 text-xs"
-                  onClick={(e) => e.stopPropagation()}
-                >
-                  Follow
-                </Button>
-              </div>
-            </div>
-          ))}
+              ))
+          )}
         </div>
         <div className="p-4 pt-0">
           <button className="text-primary text-xs hover:underline">

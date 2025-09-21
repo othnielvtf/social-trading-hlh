@@ -175,7 +175,7 @@ export function Portfolio() {
     if (!balances || !mids) return 0;
     return balances.reduce((sum, b) => {
       const qty = parseFloat(b.total) || 0;
-      const mid = mids[b.coin] ?? mids[`@${b.token}`] ?? mids[String(b.token)] ?? 0;
+      const mid = b.coin === 'USDC' ? 1 : (mids[b.coin] ?? mids[`@${b.token}`] ?? mids[String(b.token)] ?? 0);
       return sum + qty * mid;
     }, 0);
   }, [balances, mids]);
@@ -283,9 +283,17 @@ export function Portfolio() {
                           <div className="text-muted-foreground">{b.coin}</div>
                           <div className="font-medium flex items-center gap-2">
                             <span>{parseFloat(b.total).toLocaleString()}</span>
-                            <span className="text-muted-foreground">@ ${mids ? (mids[b.coin] ?? mids[`@${b.token}`] ?? mids[String(b.token)] ?? 0).toLocaleString() : '-'}</span>
+                            <span className="text-muted-foreground">@ ${
+                              b.coin === 'USDC'
+                                ? '1'
+                                : (mids ? (mids[b.coin] ?? mids[`@${b.token}`] ?? mids[String(b.token)] ?? 0).toLocaleString() : '-')
+                            }</span>
                             <span>
-                              = ${mids ? ((parseFloat(b.total)||0) * (mids[b.coin] ?? mids[`@${b.token}`] ?? mids[String(b.token)] ?? 0)).toLocaleString() : '-'}
+                              = ${(
+                                (parseFloat(b.total)||0) * (
+                                  b.coin === 'USDC' ? 1 : (mids ? (mids[b.coin] ?? mids[`@${b.token}`] ?? mids[String(b.token)] ?? 0) : 0)
+                                )
+                              ).toLocaleString()}
                             </span>
                           </div>
                         </div>

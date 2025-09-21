@@ -1,10 +1,11 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useMemo } from 'react';
 import { getPosts, getUserPosts, Post } from '../utils/firestore';
 import { useFirestoreAuthContext } from '../contexts/FirestoreAuthContext';
 import { Card } from './ui/card';
 import { Avatar } from './ui/avatar';
 import { Badge } from './ui/badge';
 import { TrendingUp, TrendingDown, Heart } from 'lucide-react';
+import { fetchAllMids } from '../utils/hyperliquid';
 
 interface FirestorePostsListProps {
   userId?: string;
@@ -93,6 +94,44 @@ export const FirestorePost: React.FC<FirestorePostProps> = ({ post }) => {
   const timestamp = post.timestamp 
     ? new Date(post.timestamp.seconds * 1000).toLocaleString()
     : 'Just now';
+  const [mids, setMids] = useState<Record<string, number> | null>(null);
+
+  useEffect(() => {
+    let cancelled = false;
+    (async () => {
+      try {
+        const res = await fetchAllMids('');
+        if (cancelled) return;
+        const m: Record<string, number> = {};
+        Object.entries(res || {}).forEach(([k, v]) => {
+          const num = parseFloat(v as string);
+          if (!Number.isNaN(num)) {
+            m[k] = num;           // keep symbol or @id
+            if (k.startsWith('@')) m[k.slice(1)] = num; // also store id-only
+          }
+        });
+        // Stablecoins
+        m['USDC'] = 1;
+        setMids(m);
+      } catch (e) {
+        // ignore errors in feed mids fetch
+      }
+    })();
+    return () => { cancelled = true; };
+  }, []);
+
+  const computed = useMemo(() => {
+    const t = post.trade;
+    if (!t || typeof t.entry !== 'number' || !mids) return null;
+    const symbol = t.symbol || '';
+    const base = symbol.replace(/-PERPS?$/i, '');
+    const mid = mids[symbol] ?? mids[base] ?? mids[`@${symbol}`] ?? 0;
+    if (!mid || !t.entry) return null;
+    // percent change relative to entry; invert for short
+    const rawPct = ((mid - t.entry) / t.entry) * 100;
+    const pct = t.type === 'short' ? -rawPct : rawPct;
+    return { pct, mid };
+  }, [post.trade, mids]);
   
   return (
     <Card className="p-4">
@@ -133,9 +172,37 @@ export const FirestorePost: React.FC<FirestorePostProps> = ({ post }) => {
                 </Badge>
                 <span className="font-medium">{post.trade.symbol}</span>
               </div>
-              <div className={post.trade.pnl >= 0 ? 'text-green-600' : 'text-red-600'}>
-                {post.trade.pnl >= 0 ? '+' : ''}${Math.abs(post.trade.pnl).toFixed(0)} ({post.trade.pnlPercent.toFixed(1)}%)
-              </div>
+              {typeof post.trade?.pnl === 'number' && typeof post.trade?.pnlPercent === 'number' ? (
+                <div className={post.trade.pnl >= 0 ? 'text-green-600' : 'text-red-600'}>
+                  {post.trade.pnl >= 0 ? '+' : ''}${Math.abs(post.trade.pnl).toFixed(0)} ({post.trade.pnlPercent.toFixed(1)}%)
+                  {(typeof post.trade.entry === 'number' || (typeof post.trade.size === 'number' && post.trade.size > 0)) && (
+                    <span className="text-xs text-muted-foreground ml-2">
+                      {typeof post.trade.entry === 'number' ? `Entry: $${post.trade.entry.toLocaleString()}` : ''}
+                      {typeof post.trade.size === 'number' && post.trade.size > 0 ? (
+                        <span className="ml-2">Size: {post.trade.size}</span>
+                      ) : null}
+                    </span>
+                  )}
+                </div>
+              ) : computed ? (
+                <div className={`${computed.pct >= 0 ? 'text-green-600' : 'text-red-600'} text-sm`}>
+                  ({computed.pct >= 0 ? '+' : ''}{computed.pct.toFixed(2)}%)
+                  <span className="text-muted-foreground ml-2">
+                    Entry: {typeof post.trade.entry === 'number' ? `$${post.trade.entry.toLocaleString()}` : '—'}
+                    <span className="ml-2">Current: ${computed.mid.toLocaleString()}</span>
+                    {typeof post.trade.size === 'number' && post.trade.size > 0 ? (
+                      <span className="ml-2">Size: {post.trade.size}</span>
+                    ) : null}
+                  </span>
+                </div>
+              ) : (
+                <div className="text-sm text-muted-foreground">
+                  Entry: {typeof post.trade.entry === 'number' ? `$${post.trade.entry.toLocaleString()}` : '—'}
+                  {typeof post.trade.size === 'number' && post.trade.size > 0 ? (
+                    <span className="ml-2">Size: {post.trade.size}</span>
+                  ) : null}
+                </div>
+              )}
             </div>
           </Card>
         )}

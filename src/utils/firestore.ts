@@ -30,10 +30,27 @@ export interface Post {
   trade?: {
     symbol: string;
     type: 'long' | 'short';
-    pnl: number;
-    pnlPercent: number;
+    // Optional manual entry fields
+    entry?: number; // price user entered
+    size?: number;  // optional size/amount
+    // Legacy/optional PnL fields
+    pnl?: number;
+    pnlPercent?: number;
   };
-}
+}; // Close the Post interface properly
+
+// List all users (optionally limited)
+export const getAllUsers = async (max = 50): Promise<UserData[]> => {
+  try {
+    const usersRef = collection(db, 'users');
+    const qUsers = query(usersRef, limitQuery(max));
+    const querySnapshot = await getDocs(qUsers);
+    return querySnapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as UserData));
+  } catch (error) {
+    console.error('Error fetching users:', error);
+    return [];
+  }
+};
 
 export interface UserData {
   id: string;

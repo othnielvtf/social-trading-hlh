@@ -5,6 +5,9 @@ import { Button } from '../ui/button';
 import { Card } from '../ui/card';
 import { Badge } from '../ui/badge';
 import { TradingModal } from '../TradingModal';
+import { FirestorePostsList } from '../FirestorePostsList';
+import { CreateFirestorePost } from '../CreateFirestorePost';
+import { useFirestoreAuthContext } from '../../contexts/FirestoreAuthContext';
 import logo from 'figma:asset/3b6b6989c883cf7a1df8e0e06c02313092c7c538.png';
 
 interface TradingPost {
@@ -175,6 +178,8 @@ interface HomeProps {
 export function Home({ onUserClick }: HomeProps) {
   const [activeTab, setActiveTab] = useState<FeedTab>('for-you');
   const [isTradeModalOpen, setIsTradeModalOpen] = useState(false);
+  const [refreshPosts, setRefreshPosts] = useState(0);
+  const { isAuthenticated, user } = useFirestoreAuthContext();
 
   const tabs = [
     { id: 'for-you' as FeedTab, label: 'For you' },
@@ -192,6 +197,12 @@ export function Home({ onUserClick }: HomeProps) {
       default:
         return mockPosts;
     }
+  };
+
+  // Handle post creation success
+  const handlePostCreated = () => {
+    // Increment refresh counter to trigger FirestorePostsList to reload
+    setRefreshPosts(prev => prev + 1);
   };
 
   return (
@@ -218,8 +229,19 @@ export function Home({ onUserClick }: HomeProps) {
         </div>
       </div>
       
-      {/* Feed */}
-      <div>
+      {/* Create Post Form (only shown when authenticated) */}
+      {isAuthenticated && (
+        <CreateFirestorePost onPostCreated={handlePostCreated} />
+      )}
+      
+      {/* Firestore Posts */}
+      <div className="mb-4">
+        <FirestorePostsList key={refreshPosts} />
+      </div>
+      
+      {/* Legacy Feed - Can be removed once Firestore integration is complete */}
+      <div className="border-t border-border pt-4 mt-4">
+        <h2 className="text-lg font-semibold px-4 mb-2">Sample Posts</h2>
         {getFilteredPosts().map((post) => (
           <PostCard 
             key={post.id} 

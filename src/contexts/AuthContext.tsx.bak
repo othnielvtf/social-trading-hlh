@@ -1,8 +1,6 @@
 import React, { createContext, useContext, ReactNode } from 'react';
-import { useAuth } from '../hooks/useAuth';
-import { UserProfile } from '../types/auth';
+import { useAuth, UserProfile } from '../hooks/useAuth';
 
-// Define the shape of our auth context
 interface AuthContextType {
   isLoading: boolean;
   isAuthenticated: boolean;
@@ -10,15 +8,12 @@ interface AuthContextType {
   login: () => void;
   logout: () => void;
   connectWallet: () => void;
-  connectEmail: () => void;
+  connectEmail: (email: string) => void;
   createWallet: () => void;
 }
 
-// Create the context with a default value
 const AuthContext = createContext<AuthContextType | undefined>(undefined);
 
-// Provider component that wraps the app and makes auth object available to any
-// child component that calls useAuthContext().
 export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) => {
   const auth = useAuth();
 
@@ -29,7 +24,6 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
   );
 };
 
-// Hook for components to get the auth object and re-render when it changes
 export const useAuthContext = (): AuthContextType => {
   const context = useContext(AuthContext);
   if (context === undefined) {
@@ -37,5 +31,3 @@ export const useAuthContext = (): AuthContextType => {
   }
   return context;
 };
-
-// UserProfile is already exported above

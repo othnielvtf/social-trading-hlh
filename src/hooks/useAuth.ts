@@ -1,16 +1,17 @@
 import { usePrivy, useWallets } from '@privy-io/react-auth';
 import { useCallback, useEffect, useState } from 'react';
+import { UserProfile } from '../types/auth';
 
-export interface UserProfile {
-  id: string;
-  address?: string;
-  email?: string;
-  name?: string;
-  avatar?: string;
-  isAuthenticated: boolean;
-}
-
+/**
+ * Custom hook for authentication using Privy
+ * Provides a simplified interface for authentication state and methods
+ */
 export const useAuth = () => {
+  // Use Privy hooks
+  const privy = usePrivy();
+  const { wallets } = useWallets();
+  
+  // Destructure what we need from privy
   const { 
     ready,
     authenticated, 
@@ -20,18 +21,26 @@ export const useAuth = () => {
     linkWallet, 
     linkEmail, 
     createWallet 
-  } = usePrivy();
-  const { wallets } = useWallets();
+  } = privy;
+  
+  // Local state
   const [profile, setProfile] = useState<UserProfile | null>(null);
   const [isLoading, setIsLoading] = useState(true);
+
+  // Debug logging
+  useEffect(() => {
+    console.log('Privy state:', { ready, authenticated, user, wallets });
+  }, [ready, authenticated, user, wallets]);
 
   // Update profile whenever user or wallets change
   useEffect(() => {
     if (!ready) {
+      console.log('Privy not ready yet');
       return;
     }
 
     if (!authenticated || !user) {
+      console.log('User not authenticated or no user data');
       setProfile(null);
       setIsLoading(false);
       return;
@@ -42,12 +51,23 @@ export const useAuth = () => {
     const walletAddress = activeWallet?.address;
 
     // Extract user information from Privy user data
-    // Note: Privy User type might not have name or avatar directly
-    // So we use optional chaining and fallbacks
-    const displayName = user.email?.address?.split('@')[0] || 'Anonymous User';
+    let displayName = 'Anonymous User';
+    let avatarUrl: string | undefined = undefined;
     
-    // For avatar, we'll use a generic avatar since Privy might not expose these directly
-    const avatarUrl = undefined; // Default to undefined, UI can show a default avatar
+    // Try to get name from various sources
+    if (user.email?.address) {
+      displayName = user.email.address.split('@')[0];
+    }
+    
+    // Try to get avatar from wallet or other sources if available
+    // For now, use a default avatar
+
+    console.log('Creating user profile:', { 
+      id: user.id, 
+      email: user.email?.address,
+      walletAddress,
+      displayName 
+    });
 
     // Construct user profile from Privy user data
     const userProfile: UserProfile = {
@@ -63,29 +83,54 @@ export const useAuth = () => {
     setIsLoading(false);
   }, [ready, authenticated, user, wallets]);
 
-  // Handle login
+  // Handle login with error handling
   const handleLogin = useCallback(() => {
-    login();
+    try {
+      console.log('Attempting to login with Privy');
+      login();
+    } catch (error) {
+      console.error('Login error:', error);
+    }
   }, [login]);
 
-  // Handle logout
+  // Handle logout with error handling
   const handleLogout = useCallback(() => {
-    logout();
+    try {
+      console.log('Logging out');
+      logout();
+    } catch (error) {
+      console.error('Logout error:', error);
+    }
   }, [logout]);
 
-  // Connect wallet
+  // Connect wallet with error handling
   const connectWallet = useCallback(() => {
-    linkWallet();
+    try {
+      console.log('Connecting wallet');
+      linkWallet();
+    } catch (error) {
+      console.error('Connect wallet error:', error);
+    }
   }, [linkWallet]);
 
-  // Create embedded wallet
+  // Create embedded wallet with error handling
   const handleCreateWallet = useCallback(() => {
-    createWallet();
+    try {
+      console.log('Creating wallet');
+      createWallet();
+    } catch (error) {
+      console.error('Create wallet error:', error);
+    }
   }, [createWallet]);
 
-  // Connect email
+  // Connect email with error handling
   const connectEmail = useCallback(() => {
-    linkEmail();
+    try {
+      console.log('Connecting email');
+      linkEmail();
+    } catch (error) {
+      console.error('Connect email error:', error);
+    }
   }, [linkEmail]);
 
   return {

@@ -4,7 +4,7 @@ import { PrivyProvider } from "@privy-io/react-auth";
 import App from "./App.tsx";
 import "./index.css";
 
-// Privy App ID - in a real app, this would come from environment variables
+// Privy App ID
 const PRIVY_APP_ID = "cmd9y0aeh00a9l10n8kx5klqu";
 
 // Get the root element
@@ -15,10 +15,8 @@ if (!rootElement) throw new Error("Root element not found");
 const root = createRoot(rootElement);
 
 // Render the app with Privy provider
-// Note: The PrivyAuthProvider is inside App.tsx, so we only need the base PrivyProvider here
 root.render(
   <React.StrictMode>
-    {/* @ts-ignore - Ignoring type error for the children prop */}
     <PrivyProvider appId={PRIVY_APP_ID}>
       <App />
     </PrivyProvider>

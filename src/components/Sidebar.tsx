@@ -2,8 +2,11 @@ import React, { useState, useRef, useEffect } from 'react';
 import { Home, Users, Briefcase, TrendingUp, User, Edit3, Settings, MoreHorizontal, Moon, Sun, LogOut, Wallet } from 'lucide-react';
 import { Button } from './ui/button';
 import { Avatar } from './ui/avatar';
-import logo from 'figma:asset/3b6b6989c883cf7a1df8e0e06c02313092c7c538.png';
-import { useAuthContext } from '../contexts/AuthContext';
+import { usePrivyAuth } from '../contexts/PrivyAuthContext';
+
+// Import a placeholder logo instead of the Figma asset
+// In a real app, you would use an actual image file
+const logo = '/logo.png'; // Placeholder path
 
 type Page = 'home' | 'explore' | 'portfolio' | 'trade' | 'profile';
 
@@ -18,7 +21,7 @@ interface SidebarProps {
 export function Sidebar({ currentPage, onPageChange, onPostClick, isDarkMode, onToggleDarkMode }: SidebarProps) {
   const [isDropdownOpen, setIsDropdownOpen] = useState(false);
   const dropdownRef = useRef<HTMLDivElement>(null);
-  const { isAuthenticated, user, login, logout, connectWallet } = useAuthContext();
+  const { isAuthenticated, user, login, logout, connectWallet } = usePrivyAuth();
 
   // Close dropdown when clicking outside
   useEffect(() => {

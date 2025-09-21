@@ -6,7 +6,7 @@ import { Textarea } from './ui/textarea';
 import { Card } from './ui/card';
 import { Badge } from './ui/badge';
 import { Avatar } from './ui/avatar';
-import { useAuthContext } from '../contexts/AuthContext';
+import { usePrivyAuth } from '../contexts/PrivyAuthContext';
 
 interface PostModalProps {
   isOpen: boolean;
@@ -53,7 +53,7 @@ const mockTradingActivity = [
 export function PostModal({ isOpen, onClose }: PostModalProps) {
   const [content, setContent] = useState('');
   const [selectedTrade, setSelectedTrade] = useState<typeof mockTradingActivity[0] | null>(null);
-  const { isAuthenticated, user, login } = useAuthContext();
+  const { isAuthenticated, user, login } = usePrivyAuth();
 
   const handleSubmit = () => {
     // In a real app, this would submit to your backend

@@ -36,11 +36,13 @@ npm install
 
 ### Configuration
 
-Create a `.env` file in the root directory with your Privy App ID:
+Create a `.env` file in the root directory with your Privy App ID (you can copy from `.env.example`):
 
 ```
-PRIVY_APP_ID=your-privy-app-id
+VITE_PRIVY_APP_ID=your-privy-app-id
 ```
+
+> **Note**: In Vite, all environment variables must be prefixed with `VITE_` to be exposed to the client-side code.
 
 ### Development
 

@@ -1,7 +1,6 @@
 import React, { useState, useEffect } from 'react';
-import { usePrivy } from '@privy-io/react-auth';
-import { AuthProvider } from './contexts/AuthContext';
-import { useAuthContext } from './contexts/AuthContext';
+import { CombinedAuthProvider } from './contexts/FirestoreAuthContext';
+import { useFirestoreAuthContext } from './contexts/FirestoreAuthContext';
 import { Sidebar } from './components/Sidebar';
 import { RightSidebar } from './components/RightSidebar';
 import { Home } from './components/pages/Home';
@@ -25,6 +24,8 @@ function AppContent() {
     return saved ? JSON.parse(saved) : false;
   });
 
+  const { isLoading } = useFirestoreAuthContext();
+
   // Effect to handle dark mode class and localStorage
   useEffect(() => {
     if (isDarkMode) {
@@ -43,6 +44,15 @@ function AppContent() {
     setCurrentUserId(userId || null);
     setCurrentPage('profile');
   };
+
+  // Show loading state while Privy is initializing
+  if (isLoading) {
+    return (
+      <div className="min-h-screen flex items-center justify-center bg-background text-foreground">
+        <div className="animate-spin rounded-full h-12 w-12 border-t-2 border-b-2 border-primary"></div>
+      </div>
+    );
+  }
 
   const renderPage = () => {
     switch (currentPage) {
@@ -72,17 +82,6 @@ function AppContent() {
         return <Home onUserClick={navigateToProfile} />;
     }
   };
-
-  const { ready } = usePrivy();
-
-  // Show loading state while Privy is initializing
-  if (!ready) {
-    return (
-      <div className="min-h-screen flex items-center justify-center bg-background text-foreground">
-        <div className="animate-spin rounded-full h-12 w-12 border-t-2 border-b-2 border-primary"></div>
-      </div>
-    );
-  }
 
   return (
     <div className="min-h-screen bg-background text-foreground">
@@ -114,11 +113,13 @@ function AppContent() {
   );
 }
 
-// Main App component wrapped with AuthProvider
-export default function App() {
+// Main App component wrapped with CombinedAuthProvider
+const App: React.FC = () => {
   return (
-    <AuthProvider>
+    <CombinedAuthProvider>
       <AppContent />
-    </AuthProvider>
+    </CombinedAuthProvider>
   );
-}
+};
+
+export default App;

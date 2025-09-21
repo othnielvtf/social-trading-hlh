@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useEffect, useState } from 'react';
 import { Calendar, MapPin, Link as LinkIcon, Edit, Settings, TrendingUp, Users, Activity, Heart, Wallet, Mail } from 'lucide-react';
 import { Avatar } from '../ui/avatar';
 import { Button } from '../ui/button';
@@ -7,6 +7,9 @@ import { Badge } from '../ui/badge';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '../ui/tabs';
 import { ProfileEditModal } from '../ProfileEditModal';
 import { useFirestoreAuthContext } from '../../contexts/FirestoreAuthContext';
+import { getUserPosts, Post } from '../../utils/firestore';
+import { collection, getDocs, query, where } from 'firebase/firestore';
+import { db } from '../../config/firebase';
 
 interface UserProfile {
   name: string;
@@ -193,6 +196,8 @@ export function Profile({ userId, onUserClick }: ProfileProps) {
   const [activeTab, setActiveTab] = useState('open');
   const [copiedField, setCopiedField] = useState<'address' | 'email' | null>(null);
   const { user: firestoreUser, privyUser } = useFirestoreAuthContext();
+  const [userPosts, setUserPosts] = useState<Post[] | null>(null);
+  const [tradesCount, setTradesCount] = useState<number>(0);
   
   // Get the profile data - use current user if no userId provided
   const isOwnProfile = !userId;
@@ -219,6 +224,37 @@ export function Profile({ userId, onUserClick }: ProfileProps) {
     : (userId ? mockUserProfiles[userId] || currentUserProfile : mappedOwn);
 
   const [isEditOpen, setIsEditOpen] = useState(false);
+
+  // Load Firestore posts for the target user and compute Trades count
+  useEffect(() => {
+    let cancelled = false;
+    (async () => {
+      const initialId = isOwnProfile ? firestoreUser?.id : userId;
+      if (!initialId) return;
+      try {
+        // First try treating the param as a Firestore userId
+        let posts = await getUserPosts(initialId);
+        if (!cancelled && posts.length === 0 && !isOwnProfile) {
+          // Fallback: treat provided value as username, resolve to userId
+          const usersRef = collection(db, 'users');
+          const qUsers = query(usersRef, where('username', '==', initialId));
+          const qs = await getDocs(qUsers);
+          const docSnap = qs.docs[0];
+          if (docSnap) {
+            const resolvedId = docSnap.id;
+            posts = await getUserPosts(resolvedId);
+          }
+        }
+        if (cancelled) return;
+        setUserPosts(posts);
+        const trades = posts.filter(p => (p as any).trade != null).length;
+        setTradesCount(trades);
+      } catch (e) {
+        // ignore
+      }
+    })();
+    return () => { cancelled = true; };
+  }, [isOwnProfile, firestoreUser?.id, userId]);
 
   return (
     <div className="h-screen flex flex-col">
@@ -292,7 +328,7 @@ export function Profile({ userId, onUserClick }: ProfileProps) {
                       <div className="text-lg">{profile.name}</div>
                       <div className="flex gap-12">
                         <div className="text-center">
-                          <div className="text-lg">{profile.totalTrades}</div>
+                          <div className="text-lg">{tradesCount}</div>
                           <div className="text-muted-foreground text-xs">Trades</div>
                         </div>
                         <div className="text-center">

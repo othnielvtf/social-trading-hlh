@@ -18,7 +18,7 @@ import {
 import { db } from '../config/firebase';
 
 // Types
-export interface Post {
+export type Post = {
   id?: string;
   userId: string;
   userName: string;
@@ -37,22 +37,10 @@ export interface Post {
     pnl?: number;
     pnlPercent?: number;
   };
-}; // Close the Post interface properly
-
-// List all users (optionally limited)
-export const getAllUsers = async (max = 50): Promise<UserData[]> => {
-  try {
-    const usersRef = collection(db, 'users');
-    const qUsers = query(usersRef, limitQuery(max));
-    const querySnapshot = await getDocs(qUsers);
-    return querySnapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as UserData));
-  } catch (error) {
-    console.error('Error fetching users:', error);
-    return [];
-  }
 };
 
-export interface UserData {
+
+export type UserData = {
   id: string;
   name: string;
   username: string;
@@ -67,9 +55,9 @@ export interface UserData {
   totalPnLPercent: number;
   winRate: number;
   totalTrades: number;
-}
+};
 
-export interface TradePosition {
+export type TradePosition = {
   id?: string;
   userId: string;
   symbol: string;
@@ -83,7 +71,7 @@ export interface TradePosition {
   pnl?: number;
   pnlPercent?: number;
   status: 'open' | 'closed';
-}
+};
 
 // Helper: remove undefined fields to satisfy Firestore constraints
 function pruneUndefined<T extends Record<string, any>>(obj: T): T {
@@ -195,6 +183,19 @@ export const createOrUpdateUser = async (userId: string, userData: Partial<UserD
   } catch (error) {
     console.error(`Error updating user ${userId}:`, error);
     return false;
+  }
+};
+
+// List all users (optionally limited)
+export const getAllUsers = async (max = 50): Promise<UserData[]> => {
+  try {
+    const usersRef = collection(db, 'users');
+    const qUsers = query(usersRef, limitQuery(max));
+    const querySnapshot = await getDocs(qUsers);
+    return querySnapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as UserData));
+  } catch (error) {
+    console.error('Error fetching users:', error);
+    return [];
   }
 };
 

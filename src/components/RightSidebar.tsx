@@ -4,7 +4,7 @@ import { Card } from './ui/card';
 import { Button } from './ui/button';
 import { Badge } from './ui/badge';
 import { Avatar } from './ui/avatar';
-import { getAllUsers, UserData } from '../utils/firestore';
+import { getAllUsers, UserData, followUser } from '../utils/firestore';
 import { useFirestoreAuthContext } from '../contexts/FirestoreAuthContext';
 
 interface TopTrader {
@@ -131,6 +131,7 @@ export function RightSidebar({ currentPage, onUserClick }: RightSidebarProps) {
   const { user: currentUser } = useFirestoreAuthContext();
   const [users, setUsers] = useState<UserData[]>([]);
   const [loadingUsers, setLoadingUsers] = useState(true);
+  const [followingSet, setFollowingSet] = useState<Set<string>>(new Set());
   useEffect(() => {
     (async () => {
       setLoadingUsers(true);
@@ -245,11 +246,20 @@ export function RightSidebar({ currentPage, onUserClick }: RightSidebarProps) {
                     </div>
                     <Button 
                       size="sm" 
-                      variant="outline" 
+                      variant={followingSet.has(u.id) ? 'default' : 'outline'} 
                       className="shrink-0 text-xs"
-                      onClick={(e) => e.stopPropagation()}
+                      onClick={async (e) => {
+                        e.stopPropagation();
+                        if (!currentUser?.id) return;
+                        if (followingSet.has(u.id)) return; // simple guard (no unfollow yet)
+                        const ok = await followUser(currentUser.id, u.id);
+                        if (ok) {
+                          setFollowingSet(prev => new Set(prev).add(u.id));
+                          setUsers(prev => prev.map(x => x.id === u.id ? { ...x, followers: (x.followers || 0) + 1 } as UserData : x));
+                        }
+                      }}
                     >
-                      Follow
+                      {followingSet.has(u.id) ? 'Following' : 'Follow'}
                     </Button>
                   </div>
                 </div>

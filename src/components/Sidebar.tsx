@@ -3,6 +3,7 @@ import { Home, Users, Briefcase, TrendingUp, User, Edit3, Settings, MoreHorizont
 import { Button } from './ui/button';
 import { Avatar } from './ui/avatar';
 import { usePrivyAuth } from '../contexts/PrivyAuthContext';
+import { useFirestoreAuthContext } from '../contexts/FirestoreAuthContext';
 
 // Import a placeholder logo instead of the Figma asset
 // In a real app, you would use an actual image file
@@ -22,6 +23,7 @@ export function Sidebar({ currentPage, onPageChange, onPostClick, isDarkMode, on
   const [isDropdownOpen, setIsDropdownOpen] = useState(false);
   const dropdownRef = useRef<HTMLDivElement>(null);
   const { isAuthenticated, user, login, logout, connectWallet } = usePrivyAuth();
+  const { user: firestoreUser } = useFirestoreAuthContext();
 
   // Close dropdown when clicking outside
   useEffect(() => {
@@ -117,22 +119,35 @@ export function Sidebar({ currentPage, onPageChange, onPostClick, isDarkMode, on
               className="w-full flex items-center gap-3 px-3 py-3 rounded-full hover:bg-accent/50 transition-colors"
             >
               <Avatar className="w-10 h-10">
-                {user.avatar ? (
+                {(firestoreUser?.avatar || user.avatar) ? (
                   <img 
-                    src={user.avatar} 
-                    alt={`${user.name}'s avatar`} 
+                    src={firestoreUser?.avatar || (user.avatar as string)} 
+                    alt={`${(firestoreUser?.name || user.name || 'User')}'s avatar`} 
                     className="w-full h-full object-cover rounded-full" 
                   />
                 ) : (
                   <div className="w-full h-full flex items-center justify-center bg-primary text-primary-foreground rounded-full">
-                    {user.name?.charAt(0).toUpperCase() || 'A'}
+                    {(firestoreUser?.name || firestoreUser?.username || user.name || 'A').charAt(0).toUpperCase()}
                   </div>
                 )}
               </Avatar>
               <div className="hidden xl:block flex-1 text-left">
-                <div className="font-medium">{user.name || 'Anonymous'}</div>
+                <div className="font-medium">
+                  {(() => {
+                    const name = firestoreUser?.name?.trim();
+                    // Prefer Firestore name if non-empty, otherwise Firestore username, then Privy name
+                    return (name && name.length > 0)
+                      ? name
+                      : (firestoreUser?.username || user.name || 'Anonymous User');
+                  })()}
+                </div>
                 <div className="text-sm text-muted-foreground">
-                  {user.email ? `@${user.email.split('@')[0]}` : user.address ? `${user.address.slice(0, 6)}...${user.address.slice(-4)}` : '@user'}
+                  {(() => {
+                    if (firestoreUser?.username) return `@${firestoreUser.username}`;
+                    if (user.email) return `@${user.email.split('@')[0]}`;
+                    if (user.address) return `${user.address.slice(0, 6)}...${user.address.slice(-4)}`;
+                    return '@user';
+                  })()}
                 </div>
               </div>
               <MoreHorizontal className="hidden xl:block w-4 h-4 text-muted-foreground" />

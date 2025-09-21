@@ -19,6 +19,7 @@ function AppContent() {
   const [currentPage, setCurrentPage] = useState<Page>('home');
   const [currentUserId, setCurrentUserId] = useState<string | null>(null);
   const [isPostModalOpen, setIsPostModalOpen] = useState(false);
+  const [hasEnforcedProfile, setHasEnforcedProfile] = useState(false);
   const [isDarkMode, setIsDarkMode] = useState(() => {
     // Check localStorage for saved preference, default to light mode
     const saved = localStorage.getItem('darkMode');
@@ -46,13 +47,14 @@ function AppContent() {
     setCurrentPage('profile');
   };
 
-  // Enforce profile completion: redirect to Profile if authenticated but incomplete
+  // Enforce profile completion once after login
   useEffect(() => {
-    if (isAuthenticated && !isUserProfileComplete(user) && currentPage !== 'profile') {
+    if (isAuthenticated && !isUserProfileComplete(user) && !hasEnforcedProfile) {
       setCurrentUserId(null);
       setCurrentPage('profile');
+      setHasEnforcedProfile(true);
     }
-  }, [isAuthenticated, user, currentPage]);
+  }, [isAuthenticated, user, hasEnforcedProfile]);
 
   // Show loading state while Privy is initializing
   if (isLoading) {
@@ -99,10 +101,10 @@ function AppContent() {
           <Sidebar 
             currentPage={currentPage} 
             onPageChange={(page) => {
-              // Block navigation away if profile is incomplete
+              // If profile incomplete, only block navigation to protected pages
               const profileComplete = isUserProfileComplete(user);
-              if (isAuthenticated && !profileComplete && page !== 'profile') {
-                // Enforce staying on Profile until completion
+              const isProtected = page === 'portfolio' || page === 'trade';
+              if (isAuthenticated && !profileComplete && isProtected) {
                 setCurrentPage('profile');
                 setCurrentUserId(null);
                 return;

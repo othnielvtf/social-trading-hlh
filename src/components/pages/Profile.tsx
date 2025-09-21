@@ -5,6 +5,8 @@ import { Button } from '../ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '../ui/card';
 import { Badge } from '../ui/badge';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '../ui/tabs';
+import { ProfileEditModal } from '../ProfileEditModal';
+import { useFirestoreAuthContext } from '../../contexts/FirestoreAuthContext';
 
 interface UserProfile {
   name: string;
@@ -189,10 +191,33 @@ interface ProfileProps {
 
 export function Profile({ userId, onUserClick }: ProfileProps) {
   const [activeTab, setActiveTab] = useState('open');
+  const { user: firestoreUser } = useFirestoreAuthContext();
   
   // Get the profile data - use current user if no userId provided
-  const profile = userId ? mockUserProfiles[userId] || currentUserProfile : currentUserProfile;
   const isOwnProfile = !userId;
+  const defaultOwn = currentUserProfile;
+  const mappedOwn = firestoreUser && isOwnProfile ? {
+    name: firestoreUser.name ?? defaultOwn.name,
+    username: firestoreUser.username ?? defaultOwn.username,
+    avatar: firestoreUser.avatar ?? defaultOwn.avatar,
+    bio: firestoreUser.bio ?? defaultOwn.bio,
+    location: firestoreUser.location ?? defaultOwn.location,
+    website: firestoreUser.website ?? defaultOwn.website,
+    joinDate: defaultOwn.joinDate,
+    followers: firestoreUser.followers ?? defaultOwn.followers,
+    following: firestoreUser.following ?? defaultOwn.following,
+    totalPnL: firestoreUser.totalPnL ?? defaultOwn.totalPnL,
+    totalPnLPercent: firestoreUser.totalPnLPercent ?? defaultOwn.totalPnLPercent,
+    winRate: firestoreUser.winRate ?? defaultOwn.winRate,
+    totalTrades: firestoreUser.totalTrades ?? defaultOwn.totalTrades,
+    isFollowing: false,
+  } as UserProfile : defaultOwn;
+
+  const profile = isOwnProfile
+    ? mappedOwn
+    : (userId ? mockUserProfiles[userId] || currentUserProfile : mappedOwn);
+
+  const [isEditOpen, setIsEditOpen] = useState(false);
 
   return (
     <div className="h-screen flex flex-col">
@@ -219,7 +244,11 @@ export function Profile({ userId, onUserClick }: ProfileProps) {
                         <img src={profile.avatar} alt={profile.name} className="w-full h-full object-cover rounded-full" />
                       </Avatar>
                       {isOwnProfile && (
-                        <button className="absolute -bottom-1 -right-1 w-8 h-8 bg-primary text-primary-foreground rounded-full flex items-center justify-center border-2 border-background hover:bg-primary/90">
+                        <button
+                          onClick={() => setIsEditOpen(true)}
+                          className="absolute -bottom-1 -right-1 w-8 h-8 bg-primary text-primary-foreground rounded-full flex items-center justify-center border-2 border-background hover:bg-primary/90"
+                          aria-label="Edit Profile"
+                        >
                           <Edit className="w-4 h-4" />
                         </button>
                       )}
@@ -244,12 +273,16 @@ export function Profile({ userId, onUserClick }: ProfileProps) {
                   </div>
                   
                   {/* Follow/Edit Button */}
-                  {!isOwnProfile && (
+                  {!isOwnProfile ? (
                     <Button 
                       variant={profile.isFollowing ? "outline" : "default"}
                       className="px-6"
                     >
                       {profile.isFollowing ? 'Following' : 'Follow'}
+                    </Button>
+                  ) : (
+                    <Button variant="outline" className="px-6" onClick={() => setIsEditOpen(true)}>
+                      Edit Profile
                     </Button>
                   )}
                 </div>
@@ -299,7 +332,6 @@ export function Profile({ userId, onUserClick }: ProfileProps) {
               </Card>
             </div>
           </div>
-          
           {/* Tabs */}
           <div className="px-6">
             <Tabs value={activeTab} onValueChange={setActiveTab}>
@@ -308,7 +340,7 @@ export function Profile({ userId, onUserClick }: ProfileProps) {
                 <TabsTrigger value="closed">Closed positions</TabsTrigger>
                 <TabsTrigger value="posts">Posts</TabsTrigger>
               </TabsList>
-              
+
               <TabsContent value="open" className="space-y-3">
                 {mockOpenPositions.map((position, index) => (
                   <Card key={position.id} className="p-3 hover:bg-accent/50 transition-colors">
@@ -346,7 +378,7 @@ export function Profile({ userId, onUserClick }: ProfileProps) {
                   </Card>
                 ))}
               </TabsContent>
-              
+
               <TabsContent value="closed" className="space-y-3">
                 {mockClosedPositions.map((position, index) => (
                   <Card key={position.id} className="p-3 hover:bg-accent/50 transition-colors">
@@ -394,11 +426,14 @@ export function Profile({ userId, onUserClick }: ProfileProps) {
           </div>
         </div>
       </div>
+      {isOwnProfile && (
+        <ProfileEditModal isOpen={isEditOpen} onClose={() => setIsEditOpen(false)} />
+      )}
     </div>
   );
 }
 
-function ProfilePost({ post }: { post: UserPost }) {
+const ProfilePost: React.FC<{ post: UserPost }> = ({ post }) => {
   return (
     <Card className="p-4">
       <div className="space-y-3">

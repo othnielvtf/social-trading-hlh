@@ -25,11 +25,17 @@ export const useFirestoreAuth = () => {
           // User exists in Firestore
           setFirestoreUser(userData);
         } else {
-          // Create new user in Firestore based on Privy data
+          // Create new user in Firestore with blank fields, pregenerated username,
+          // and a Gravatar default identicon as avatar
+          const gravatarDefault = 'https://www.gravatar.com/avatar/00000000000000000000000000000000?d=identicon&s=120';
+          const randomId = Math.random().toString(36).substring(2, 10); // 8-char alphanumeric
           const newUserData: Partial<UserData> = {
-            name: privyUser.name || 'Anonymous User',
-            username: `user_${privyUser.id.substring(0, 8)}`,
-            avatar: privyUser.avatar,
+            name: '',
+            username: `user_${randomId}`,
+            avatar: gravatarDefault,
+            bio: '',
+            location: '',
+            website: '',
           };
           
           const success = await createOrUpdateUser(privyUser.id, newUserData);

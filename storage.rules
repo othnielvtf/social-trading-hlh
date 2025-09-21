@@ -1,0 +1,13 @@
+rules_version = '2';
+service firebase.storage {
+  match /b/{bucket}/o {
+    // ================================================================
+    // TEMPORARY DEV RULES — PERMISSIVE
+    // WARNING: Public read/write. Only for development while wiring auth.
+    // Revert to stricter rules once custom tokens are in place.
+    // ================================================================
+    match /{allPaths=**} {
+      allow read, write: if true;
+    }
+  }
+}

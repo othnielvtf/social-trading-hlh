@@ -1,0 +1,31 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+    // ================================================================
+    // TEMPORARY DEV RULES — PERMISSIVE
+    // WARNING: These rules allow public writes and should ONLY be used
+    // during development while wiring up Firebase custom tokens.
+    // Revert to stricter rules once auth tokens are in place.
+    // ================================================================
+
+    // USERS: allow anyone to read/create/update (TEMP)
+    match /users/{userId} {
+      allow read, create, update: if true;
+    }
+
+    // POSTS: allow anyone to read/write (TEMP)
+    match /posts/{postId} {
+      allow read, create, update, delete: if true;
+    }
+
+    // POSITIONS: allow signed-in OR public read; allow write for anyone (TEMP)
+    match /positions/{positionId} {
+      allow read, create, update, delete: if true;
+    }
+
+    // FOLLOWS: allow public read/write (TEMP)
+    match /follows/{followId} {
+      allow read, create, update, delete: if true;
+    }
+  }
+}

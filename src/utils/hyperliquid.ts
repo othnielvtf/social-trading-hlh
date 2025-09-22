@@ -39,7 +39,7 @@ export type ClearinghouseStateResponse = {
 };
 
 const HL_ENDPOINT = 'https://hyperliquid-testnet.core.chainstack.com/8f4f1d30c3f46fbe71038f1819efc218/info';
-const HL_INFO_PUBLIC = 'https://api.hyperliquid-testnet.xyz/info';
+const HL_INFO_PUBLIC = 'https://api.hyperliquid.xyz/info';
 
 async function postJSON<TReq extends object, TRes>(body: TReq): Promise<TRes> {
   const res = await fetch(HL_ENDPOINT, {

@@ -1,10 +1,11 @@
 import React, { useEffect, useState } from 'react';
+import { fetchAllMids } from '../utils/hyperliquid';
 import { TrendingUp, TrendingDown, UserPlus, MoreHorizontal, Loader2 } from 'lucide-react';
 import { Card } from './ui/card';
 import { Button } from './ui/button';
 import { Badge } from './ui/badge';
 import { Avatar } from './ui/avatar';
-import { getAllUsers, UserData, followUser, unfollowUser, getFollowingIds } from '../utils/firestore';
+import { getAllUsers, UserData, followUser, unfollowUser, getFollowingIds, getTopTradersByTradeCountToday, TraderTradeCount } from '../utils/firestore';
 import { useFirestoreAuthContext } from '../contexts/FirestoreAuthContext';
 
 interface TopTrader {
@@ -34,55 +35,13 @@ interface SuggestedTrader {
   isFollowing: boolean;
 }
 
-const topTradersToday: TopTrader[] = [
-  {
-    id: '1',
-    name: 'CryptoPro',
-    username: 'crypto_pro_trader',
-    avatar: 'https://images.unsplash.com/photo-1568602471122-7832951cc4c5?w=32&h=32&fit=crop&crop=face',
-    todayPnL: 15420,
-    todayPnLPercent: 8.2,
-    isFollowing: false
-  },
-  {
-    id: '2',
-    name: 'DeFi Master',
-    username: 'defi_master',
-    avatar: 'https://images.unsplash.com/photo-1500648767791-00dcc994a43e?w=32&h=32&fit=crop&crop=face',
-    todayPnL: 12890,
-    todayPnLPercent: 6.4,
-    isFollowing: true
-  },
-  {
-    id: '3',
-    name: 'Maria Santos',
-    username: 'maria_trades',
-    avatar: 'https://images.unsplash.com/photo-1438761681033-6461ffad8d80?w=32&h=32&fit=crop&crop=face',
-    todayPnL: 9340,
-    todayPnLPercent: 5.1,
-    isFollowing: false
-  }
-];
+// Top traders will be computed from Firestore by trade count today
 
-const topVolumeMarkets: MarketVolume[] = [
-  {
-    symbol: 'BTC-USD',
-    volume: 28500000000,
-    change24h: 2.01,
-    price: 43200
-  },
-  {
-    symbol: 'ETH-USD',
-    volume: 12800000000,
-    change24h: -1.85,
-    price: 2387
-  },
-  {
-    symbol: 'SOL-USD',
-    volume: 1200000000,
-    change24h: 2.93,
-    price: 112.45
-  }
+const trending = [
+  { symbol: 'BTC-USD', name: 'Bitcoin', price: 42150, change: 0.36 },
+  { symbol: 'ETH-USD', name: 'Ethereum', price: 2387, change: -1.24 },
+  { symbol: 'SOL-USD', name: 'Solana', price: 118, change: 5.67 },
+  { symbol: 'HYPE-USD', name: 'Hyperliquid', price: 35.42, change: 2.18 },
 ];
 
 const suggestedTraders: SuggestedTrader[] = [
@@ -133,6 +92,13 @@ export function RightSidebar({ currentPage, onUserClick }: RightSidebarProps) {
   const [loadingUsers, setLoadingUsers] = useState(true);
   const [followingSet, setFollowingSet] = useState<Set<string>>(new Set());
   const [loadingFollow, setLoadingFollow] = useState<Record<string, boolean>>({});
+  const [mids, setMids] = useState<Record<string, number> | null>(null);
+  const [topTraders, setTopTraders] = useState<TraderTradeCount[] | null>(null);
+  const [loadingTop, setLoadingTop] = useState(true);
+
+  // Map a UI symbol like BTC-USD to Hyperliquid PERP name
+  const mapToPerp = (symbol: string) => symbol.endsWith('-USD') ? symbol.replace('-USD', '-PERP') : symbol;
+
   useEffect(() => {
     (async () => {
       setLoadingUsers(true);
@@ -140,6 +106,23 @@ export function RightSidebar({ currentPage, onUserClick }: RightSidebarProps) {
       setUsers(list);
       setLoadingUsers(false);
     })();
+  }, []);
+
+  // Load top traders today by trade count
+  useEffect(() => {
+    let cancelled = false;
+    (async () => {
+      try {
+        setLoadingTop(true);
+        const top = await getTopTradersByTradeCountToday(3);
+        if (!cancelled) setTopTraders(top);
+      } catch {
+        if (!cancelled) setTopTraders([]);
+      } finally {
+        if (!cancelled) setLoadingTop(false);
+      }
+    })();
+    return () => { cancelled = true; };
   }, []);
 
   // Initialize following set from Firestore so it persists across refreshes
@@ -157,47 +140,75 @@ export function RightSidebar({ currentPage, onUserClick }: RightSidebarProps) {
     return () => { cancelled = true; };
   }, [currentUser?.id]);
 
+  useEffect(() => {
+    let cancelled = false;
+    const load = async () => {
+      try {
+        const res = await fetchAllMids('');
+        if (cancelled) return;
+        const map: Record<string, number> = {};
+        Object.entries(res || {}).forEach(([k, v]) => {
+          const num = parseFloat(v as string);
+          if (!Number.isNaN(num)) {
+            map[k] = num;
+            if (k.startsWith('@')) map[k.slice(1)] = num;
+          }
+        });
+        setMids(map);
+      } catch (_) {
+        // ignore network errors
+      }
+    };
+    // initial load
+    load();
+    // poll every 10 seconds
+    const id = setInterval(load, 10000);
+    return () => { cancelled = true; clearInterval(id); };
+  }, []);
+
   return (
     <div className="w-80 p-4 space-y-4 sticky top-0 h-screen overflow-y-auto">
-      {/* Top Traders Today */}
+      {/* Top Traders Today (most trades) */}
       <Card className="overflow-hidden">
         <div className="p-4 pb-0">
           <h3 className="text-lg">Top Traders Today</h3>
         </div>
         <div className="divide-y divide-border">
-          {topTradersToday.map((trader) => (
-            <div 
-              key={trader.id} 
-              className="p-4 hover:bg-accent/50 transition-colors cursor-pointer"
-              onClick={() => onUserClick && onUserClick(trader.username)}
-            >
-              <div className="flex items-center justify-between">
-                <div className="flex items-center gap-3">
-                  <Avatar className="w-8 h-8">
-                    <img src={trader.avatar} alt={trader.name} className="w-full h-full object-cover rounded-full" />
-                  </Avatar>
-                  <div className="min-w-0">
-                    <div className="text-sm truncate">{trader.name}</div>
-                    <div className="text-xs text-muted-foreground truncate">@{trader.username}</div>
+          {loadingTop ? (
+            <div className="p-4 text-sm text-muted-foreground">Loading…</div>
+          ) : (topTraders && topTraders.length > 0 ? (
+            topTraders.map(({ user, tradesToday }) => (
+              <div 
+                key={user.id} 
+                className="p-4 hover:bg-accent/50 transition-colors cursor-pointer"
+                onClick={() => onUserClick && onUserClick(user.id)}
+              >
+                <div className="flex items-center justify-between">
+                  <div className="flex items-center gap-3">
+                    <Avatar className="w-8 h-8">
+                      <img src={user.avatar || 'https://www.gravatar.com/avatar/00000000000000000000000000000000?d=identicon&s=64'} alt={user.name || user.username} className="w-full h-full object-cover rounded-full" />
+                    </Avatar>
+                    <div className="min-w-0">
+                      <div className="text-sm truncate">{user.name || user.username}</div>
+                      <div className="text-xs text-muted-foreground truncate">@{user.username}</div>
+                    </div>
                   </div>
-                </div>
-                <div className="text-right">
-                  <div className="text-green-600 text-sm">
-                    +${trader.todayPnL.toLocaleString()}
-                  </div>
-                  <div className="text-xs text-green-600">
-                    +{trader.todayPnLPercent}%
+                  <div className="text-right">
+                    <div className="text-sm font-medium">{tradesToday} trades</div>
+                    <div className="text-xs text-muted-foreground">today</div>
                   </div>
                 </div>
               </div>
-            </div>
+            ))
+          ) : (
+            <div className="p-4 text-sm text-muted-foreground">No trades yet today.</div>
           ))}
         </div>
-        <div className="p-4 pt-0">
+        {/* <div className="p-4 pt-0">
           <button className="text-primary text-xs hover:underline">
             Show more
           </button>
-        </div>
+        </div> */}
       </Card>
 
       {/* Top Volume Markets */}
@@ -206,30 +217,38 @@ export function RightSidebar({ currentPage, onUserClick }: RightSidebarProps) {
           <h3 className="text-lg">Trending</h3>
         </div>
         <div className="divide-y divide-border">
-          {topVolumeMarkets.map((market, index) => (
-            <div key={market.symbol} className="p-4 hover:bg-accent/50 transition-colors cursor-pointer">
-              <div className="flex items-center justify-between">
-                <div>
-                  <div className="text-sm">{market.symbol}</div>
-                  <div className="text-xs text-muted-foreground">
-                    ${(market.volume / 1000000000).toFixed(1)}B volume
+          {trending.map((asset) => {
+            const perp = mapToPerp(asset.symbol);
+            const live = mids?.[perp] ?? mids?.[perp.replace('-PERP','')] ?? undefined;
+            const displayPrice = live ?? asset.price;
+            return (
+              <div key={asset.symbol} className="flex items-center justify-between py-3">
+                <div className="flex items-center gap-3">
+                  <div className="w-8 h-8 rounded-full bg-accent/40" />
+                  <div>
+                    <div className="font-medium">{asset.name}</div>
+                    <div className="text-sm text-muted-foreground">{asset.symbol}</div>
                   </div>
                 </div>
                 <div className="text-right">
-                  <div className="text-sm">${market.price.toLocaleString()}</div>
-                  <div className={`text-xs ${market.change24h > 0 ? 'text-green-600' : 'text-red-600'}`}>
-                    {market.change24h > 0 ? '+' : ''}{market.change24h}%
+                  <div className="font-semibold">${displayPrice.toLocaleString()}</div>
+                  <div className={
+                    asset.change > 0 
+                      ? 'text-green-600 dark:text-green-400 text-sm' 
+                      : 'text-red-600 dark:text-red-400 text-sm'
+                  }>
+                    {asset.change > 0 ? '+' : ''}{asset.change}%
                   </div>
                 </div>
               </div>
-            </div>
-          ))}
+            );
+          })}
         </div>
-        <div className="p-4 pt-0">
+        {/* <div className="p-4 pt-0">
           <button className="text-primary text-xs hover:underline">
             Show more
           </button>
-        </div>
+        </div> */}
       </Card>
 
       {/* Who to Follow */}
@@ -305,11 +324,11 @@ export function RightSidebar({ currentPage, onUserClick }: RightSidebarProps) {
               ))
           )}
         </div>
-        <div className="p-4 pt-0">
+        {/* <div className="p-4 pt-0">
           <button className="text-primary text-xs hover:underline">
             Show more
           </button>
-        </div>
+        </div> */}
       </Card>
 
 

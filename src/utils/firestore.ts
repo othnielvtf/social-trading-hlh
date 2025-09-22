@@ -39,6 +39,7 @@ export type Post = {
   };
 };
 
+
 // Get the list of user IDs that a user is following
 export const getFollowingIds = async (followerId: string): Promise<string[]> => {
   try {
@@ -377,5 +378,44 @@ export const isFollowing = async (followerId: string, followingId: string): Prom
   } catch (error) {
     console.error(`Error checking follow status for ${followerId} -> ${followingId}:`, error);
     return false;
+  }
+};
+
+// Compute top traders by number of trades today based on posts that include a `trade` payload
+export type TraderTradeCount = {
+  user: UserData;
+  tradesToday: number;
+};
+
+export const getTopTradersByTradeCountToday = async (topN = 3): Promise<TraderTradeCount[]> => {
+  try {
+    const postsRef = collection(db, 'posts');
+    // Start of day in UTC (adjust if you prefer local timezone)
+    const now = new Date();
+    const startOfDayUTC = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), now.getUTCDate(), 0, 0, 0, 0));
+    const qPosts = query(postsRef, where('timestamp', '>=', Timestamp.fromDate(startOfDayUTC)));
+    const qs = await getDocs(qPosts);
+
+    const counts = new Map<string, number>();
+    qs.forEach((d) => {
+      const data = d.data() as Post;
+      if (data?.trade && data?.userId) {
+        counts.set(data.userId, (counts.get(data.userId) || 0) + 1);
+      }
+    });
+
+    const top = Array.from(counts.entries())
+      .sort((a, b) => b[1] - a[1])
+      .slice(0, topN);
+
+    const out: TraderTradeCount[] = [];
+    for (const [userId, tradesToday] of top) {
+      const user = await getUser(userId);
+      if (user) out.push({ user, tradesToday });
+    }
+    return out;
+  } catch (err) {
+    console.error('Error computing top traders by trades today:', err);
+    return [];
   }
 };

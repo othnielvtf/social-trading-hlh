@@ -177,6 +177,28 @@ export function TradingModal({ isOpen, onClose }: TradingModalProps) {
     try {
       setIsSubmitting(true);
       setSubmitError(null);
+      // DEBUG: surface price/tick info to help align with venue
+      try {
+        const name = mapToPerp(selectedAsset);
+        const env = (import.meta as any).env || {};
+        const envTick = (key: string) => env[key] ? parseFloat(env[key]) : undefined;
+        const tickSizeMap: Record<string, number> = {
+          'BTC-PERP': envTick('VITE_TICK_BTC_PERP') ?? 0.5,
+          'ETH-PERP': envTick('VITE_TICK_ETH_PERP') ?? 0.5,
+          'SOL-PERP': envTick('VITE_TICK_SOL_PERP') ?? 0.001,
+          'AVAX-PERP': envTick('VITE_TICK_AVAX_PERP') ?? 0.001,
+        };
+        const tick = tickSizeMap[name] ?? (envTick('VITE_TICK_DEFAULT') ?? 0.01);
+        const px = orderPayload.limitPx ?? 0;
+        const units = tick ? (px / tick) : 0;
+        showToast({
+          variant: 'default',
+          title: 'Debug price',
+          description: `${name} px=${px} tick=${tick} units=${units}`
+        });
+        // eslint-disable-next-line no-console
+        console.debug('[TradingModal] price debug', { name, px, tick, units });
+      } catch {}
       // 1) Approve builder fee via our secure API (server-side PK)
       setIsApproving(true);
       const approveEndpoint: string | undefined = (import.meta as any).env?.VITE_APPROVE_URL;

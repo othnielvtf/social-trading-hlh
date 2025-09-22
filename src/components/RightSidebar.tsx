@@ -224,7 +224,6 @@ export function RightSidebar({ currentPage, onUserClick }: RightSidebarProps) {
             return (
               <div key={asset.symbol} className="flex items-center justify-between py-3">
                 <div className="flex items-center gap-3">
-                  <div className="w-8 h-8 rounded-full bg-accent/40" />
                   <div>
                     <div className="font-medium">{asset.name}</div>
                     <div className="text-sm text-muted-foreground">{asset.symbol}</div>

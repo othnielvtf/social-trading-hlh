@@ -211,17 +211,7 @@ export function Explore({ onUserClick }: ExploreProps) {
           </div>
           
           <div className="flex items-center justify-between mb-6">
-            <div className="flex items-center gap-3">
-              <Avatar className="w-8 h-8">
-                <img src="https://images.unsplash.com/photo-1472099645785-5658abf4ff4e?w=400&h=400&fit=crop&crop=face" alt="Your profile" />
-              </Avatar>
-              <div className="flex items-center gap-2">
-                <span className="font-medium">Sarah Johnson</span>
-                <span className="text-muted-foreground">@sarahj</span>
-                <span className="text-green-500 font-medium">+$2,340</span>
-                <span className="bg-muted text-muted-foreground text-xs px-2 py-1 rounded-full">me</span>
-              </div>
-            </div>
+
             
             <div className="flex items-center gap-2">
               <Button variant="outline" size="sm" disabled className="opacity-50 cursor-not-allowed">24h</Button>

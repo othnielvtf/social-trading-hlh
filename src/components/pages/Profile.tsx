@@ -127,7 +127,7 @@ interface ProfileProps {
 }
 
 export function Profile({ userId, onUserClick }: ProfileProps) {
-  const [activeTab, setActiveTab] = useState('open');
+  const [activeTab, setActiveTab] = useState('posts');
   const [copiedField, setCopiedField] = useState<'address' | 'email' | null>(null);
   const { user: firestoreUser, privyUser } = useFirestoreAuthContext();
   const [userPosts, setUserPosts] = useState<Post[] | null>(null);
@@ -394,87 +394,9 @@ export function Profile({ userId, onUserClick }: ProfileProps) {
           <div className="px-6">
             <Tabs value={activeTab} onValueChange={setActiveTab}>
               <TabsList className="mb-6">
-                <TabsTrigger value="open">Open positions</TabsTrigger>
-                <TabsTrigger value="closed">Closed positions</TabsTrigger>
                 <TabsTrigger value="posts">Posts</TabsTrigger>
               </TabsList>
 
-              <TabsContent value="open" className="space-y-3">
-                {mockOpenPositions.map((position, index) => (
-                  <Card key={position.id} className="p-3 hover:bg-accent/50 transition-colors">
-                    <div className="flex items-center justify-between">
-                      <div className="flex items-center gap-3">
-                        <div className="w-8 h-8 rounded-full bg-muted flex items-center justify-center text-xs font-medium">
-                          {position.symbol.slice(0, 2).toUpperCase()}
-                        </div>
-                        <div>
-                          <div className="flex items-center gap-2">
-                            <span className="text-sm font-medium">{position.name}</span>
-                            <Badge 
-                              variant="secondary" 
-                              className={`text-xs px-2 py-0.5 ${
-                                index % 2 === 0
-                                  ? 'bg-green-100 text-green-700 border-green-200' 
-                                  : 'bg-red-100 text-red-700 border-red-200'
-                              }`}
-                            >
-                              {index % 2 === 0 ? 'LONG' : 'SHORT'}
-                            </Badge>
-                          </div>
-                          <div className="text-xs text-muted-foreground">Opened 12 Sep at 09:15</div>
-                        </div>
-                      </div>
-                      <div className="text-right">
-                        <div className={`text-sm font-medium ${position.pnlPercent >= 0 ? 'text-green-600' : 'text-red-600'}`}>
-                          {position.pnlPercent >= 0 ? '+' : ''}${Math.abs(position.pnlPercent * 10).toFixed(0)}
-                        </div>
-                        <div className={`text-xs flex items-center justify-end gap-1 ${position.pnlPercent >= 0 ? 'text-green-600' : 'text-red-600'}`}>
-                          {position.pnlPercent >= 0 ? '▲' : '▼'} {Math.abs(position.pnlPercent)}%
-                        </div>
-                      </div>
-                    </div>
-                  </Card>
-                ))}
-              </TabsContent>
-
-              <TabsContent value="closed" className="space-y-3">
-                {mockClosedPositions.map((position, index) => (
-                  <Card key={position.id} className="p-3 hover:bg-accent/50 transition-colors">
-                    <div className="flex items-center justify-between">
-                      <div className="flex items-center gap-3">
-                        <div className="w-8 h-8 rounded-full bg-muted flex items-center justify-center text-xs font-medium">
-                          {position.symbol.slice(0, 2).toUpperCase()}
-                        </div>
-                        <div>
-                          <div className="flex items-center gap-2">
-                            <span className="text-sm font-medium">{position.name}</span>
-                            <Badge 
-                              variant="secondary" 
-                              className={`text-xs px-2 py-0.5 ${
-                                index % 3 === 0
-                                  ? 'bg-green-100 text-green-700 border-green-200' 
-                                  : 'bg-red-100 text-red-700 border-red-200'
-                              }`}
-                            >
-                              {index % 3 === 0 ? 'LONG' : 'SHORT'}
-                            </Badge>
-                          </div>
-                          <div className="text-xs text-muted-foreground">Closed {position.date}</div>
-                        </div>
-                      </div>
-                      <div className="text-right">
-                        <div className={`text-sm font-medium ${position.pnl >= 0 ? 'text-green-600' : 'text-red-600'}`}>
-                          {position.pnl >= 0 ? '+' : ''}${position.pnl}
-                        </div>
-                        <div className={`text-xs flex items-center justify-end gap-1 ${position.pnlPercent >= 0 ? 'text-green-600' : 'text-red-600'}`}>
-                          {position.pnlPercent >= 0 ? '▲' : '▼'} {Math.abs(position.pnlPercent)}%
-                        </div>
-                      </div>
-                    </div>
-                  </Card>
-                ))}
-              </TabsContent>
-              
               <TabsContent value="posts" className="space-y-4">
                 {!userPosts ? (
                   <div className="text-sm text-muted-foreground">Loading posts…</div>

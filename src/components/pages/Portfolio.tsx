@@ -6,6 +6,7 @@ import { Button } from '../ui/button';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '../ui/tabs';
 import { useFirestoreAuthContext } from '../../contexts/FirestoreAuthContext';
 import { fetchAllMids, fetchClearinghouseState, fetchSpotClearinghouseState, SpotBalance } from '../../utils/hyperliquid';
+import { getUserPosts, type Post } from '../../utils/firestore';
 
 interface Position {
   id: string;
@@ -109,8 +110,7 @@ const mockClosedTrades: ClosedTrade[] = [
 
 export function Portfolio() {
   const [isBalanceVisible, setIsBalanceVisible] = useState(true);
-  const [activeTab, setActiveTab] = useState('positions');
-  const { privyUser } = useFirestoreAuthContext();
+  const { privyUser, user: firestoreUser } = useFirestoreAuthContext();
 
   const address = privyUser?.address;
   const [balances, setBalances] = useState<SpotBalance[] | null>(null);
@@ -124,6 +124,8 @@ export function Portfolio() {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [mids, setMids] = useState<Record<string, number> | null>(null);
+  const [userTrades, setUserTrades] = useState<Post[] | null>(null);
+  const [loadingTrades, setLoadingTrades] = useState<boolean>(false);
 
   useEffect(() => {
     let cancelled = false;
@@ -170,6 +172,24 @@ export function Portfolio() {
     load();
     return () => { cancelled = true; };
   }, [address]);
+
+  // Load user's trades from Firestore posts (posts that include a `trade` payload)
+  useEffect(() => {
+    let cancelled = false;
+    (async () => {
+      try {
+        setLoadingTrades(true);
+        const uid = firestoreUser?.id;
+        if (!uid) { setUserTrades([]); return; }
+        const posts = await getUserPosts(uid);
+        const tradesOnly = posts.filter(p => (p as any).trade);
+        if (!cancelled) setUserTrades(tradesOnly);
+      } finally {
+        if (!cancelled) setLoadingTrades(false);
+      }
+    })();
+    return () => { cancelled = true; };
+  }, [firestoreUser?.id]);
 
   const totalBalance = useMemo(() => {
     if (!balances || !mids) return 0;
@@ -323,53 +343,78 @@ export function Portfolio() {
             )}
           </div>
 
-          {/* Positions and History */}
-          <Tabs value={activeTab} onValueChange={setActiveTab}>
-            <div className="flex items-center justify-between mb-4">
-              <TabsList>
-                <TabsTrigger value="positions">Open positions</TabsTrigger>
-                <TabsTrigger value="orders">Open orders</TabsTrigger>
-                <TabsTrigger value="closed">Closed positions</TabsTrigger>
-              </TabsList>
-              
-              <div className="flex items-center gap-2">
-                <Button variant="ghost" size="sm" disabled className="opacity-50 cursor-not-allowed text-muted-foreground">
-                  24h
-                </Button>
-                <Button variant="ghost" size="sm" disabled className="opacity-50 cursor-not-allowed text-muted-foreground">
-                  7d
-                </Button>
-                <Button variant="ghost" size="sm" disabled className="opacity-50 cursor-not-allowed text-muted-foreground">
-                  30d
-                </Button>
-                <Button variant="ghost" size="sm" className="bg-accent text-accent-foreground">
-                  All
-                </Button>
-              </div>
-            </div>
-            
-            <TabsContent value="positions" className="space-y-4">
-              <div className="space-y-2">
-                {mockPositions.map((position) => (
-                  <PositionCard key={position.id} position={position} />
-                ))}
-              </div>
-            </TabsContent>
-            
-            <TabsContent value="orders" className="space-y-4">
-              <div className="space-y-2 text-center py-8 text-muted-foreground">
-                No open orders
-              </div>
-            </TabsContent>
-            
-            <TabsContent value="closed" className="space-y-4">
-              <div className="space-y-2">
-                {mockClosedTrades.map((trade) => (
-                  <TradeHistoryCard key={trade.id} trade={trade} />
-                ))}
-              </div>
-            </TabsContent>
-          </Tabs>
+          {/* Your Trades (from your posts) */}
+          <div className="space-y-4">
+            <Card>
+              <CardHeader className="pb-2"><CardTitle className="text-sm">Your Trades</CardTitle></CardHeader>
+              <CardContent className="p-4 space-y-3">
+                {loadingTrades ? (
+                  <div className="h-6 w-40 bg-accent/50 rounded animate-pulse" />
+                ) : !userTrades || userTrades.length === 0 ? (
+                  <div className="text-sm text-muted-foreground">You haven't posted any trades yet.</div>
+                ) : (
+                  userTrades.map((p) => {
+                    const t = (p as any).trade as { symbol?: string; type?: 'long'|'short'; pnl?: number; pnlPercent?: number; entry?: number } | undefined;
+                    if (!t) return null;
+                    // Derive current mid price from symbol base (e.g., BTC from BTC-USD)
+                    const base = (t.symbol || '').split('-')[0]?.toUpperCase();
+                    const mid = base && mids ? (mids[base] ?? null) : null;
+                    const entry = typeof t.entry === 'number' ? t.entry : null;
+                    let livePnlPct: number | null = null;
+                    if (entry && mid) {
+                      const diff = t.type === 'short' ? (entry - mid) : (mid - entry);
+                      livePnlPct = (diff / entry) * 100;
+                    }
+                    return (
+                      <Card key={p.id} className="p-3 bg-accent/20">
+                        <div className="flex items-center justify-between">
+                          <div className="flex items-center gap-2">
+                            <Badge 
+                              variant="outline"
+                              className={`text-xs ${t.type === 'long' ? 'bg-green-100 text-green-700 border-green-200 dark:bg-green-900/20 dark:text-green-400 dark:border-green-800/30' : 'bg-red-100 text-red-700 border-red-200 dark:bg-red-900/20 dark:text-red-400 dark:border-red-800/30'}`}
+                            >
+                              {t.type?.toUpperCase()}
+                            </Badge>
+                            <span className="font-medium">{t.symbol}</span>
+                          </div>
+                          <div className="text-right">
+                            {(typeof t.pnl === 'number' || typeof t.pnlPercent === 'number') && (
+                              <div className="text-green-600 font-medium">
+                                {typeof t.pnl === 'number' ? `${t.pnl >= 0 ? '+' : ''}$${Math.abs(t.pnl).toFixed(0)}` : ''}
+                                {typeof t.pnlPercent === 'number' ? ` (${t.pnlPercent.toFixed(1)}%)` : ''}
+                              </div>
+                            )}
+                            {livePnlPct !== null && (
+                              <div className="text-xs text-muted-foreground">Live PnL% (mid): {livePnlPct.toFixed(2)}%</div>
+                            )}
+                          </div>
+                        </div>
+                        <div className="mt-2 grid grid-cols-3 gap-4 text-xs">
+                          <div>
+                            <div className="text-muted-foreground">Entry</div>
+                            <div className="font-medium">{entry ? `$${entry.toLocaleString()}` : '—'}</div>
+                          </div>
+                          <div>
+                            <div className="text-muted-foreground">Mid</div>
+                            <div className="font-medium">{mid ? `$${mid.toLocaleString()}` : '—'}</div>
+                          </div>
+                          <div>
+                            <div className="text-muted-foreground">Live PnL%</div>
+                            <div className={`font-medium ${livePnlPct !== null ? (livePnlPct >= 0 ? 'text-green-600' : 'text-red-600') : ''}`}>
+                              {livePnlPct !== null ? `${livePnlPct >= 0 ? '+' : ''}${Math.abs(livePnlPct).toFixed(2)}%` : '—'}
+                            </div>
+                          </div>
+                        </div>
+                        {p.content ? (
+                          <div className="mt-2 text-sm text-foreground/90">{p.content}</div>
+                        ) : null}
+                      </Card>
+                    );
+                  })
+                )}
+              </CardContent>
+            </Card>
+          </div>
         </div>
       </div>
     </div>

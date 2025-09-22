@@ -79,9 +79,10 @@ type Page = 'home' | 'explore' | 'portfolio' | 'trade' | 'profile';
 interface RightSidebarProps {
   currentPage: Page;
   onUserClick?: (userId: string) => void;
+  onNavigate?: (page: Page) => void;
 }
 
-export function RightSidebar({ currentPage, onUserClick }: RightSidebarProps) {
+export function RightSidebar({ currentPage, onUserClick, onNavigate }: RightSidebarProps) {
   // Hide content on Portfolio page
   if (currentPage === 'portfolio') {
     return null;
@@ -204,11 +205,14 @@ export function RightSidebar({ currentPage, onUserClick }: RightSidebarProps) {
             <div className="p-4 text-sm text-muted-foreground">No trades yet today.</div>
           ))}
         </div>
-        {/* <div className="p-4 pt-0">
-          <button className="text-primary text-xs hover:underline">
-            Show more
+        <div className="p-4 pt-0">
+          <button
+            className="text-primary text-xs hover:underline"
+            onClick={() => onNavigate && onNavigate('explore')}
+          >
+            Show all
           </button>
-        </div> */}
+        </div>
       </Card>
 
       {/* Top Volume Markets */}
@@ -263,6 +267,7 @@ export function RightSidebar({ currentPage, onUserClick }: RightSidebarProps) {
           ) : (
             users
               .filter(u => !currentUser || u.id !== currentUser.id)
+              .slice(0, 5)
               .map((u) => (
                 <div key={u.id} className="p-4 hover:bg-accent/50 transition-colors">
                   <div className="flex items-center justify-between">

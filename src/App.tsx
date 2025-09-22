@@ -130,7 +130,14 @@ function AppContent() {
           <main className={`flex-1 border-l border-r border-border ${currentPage === 'portfolio' ? '' : 'max-w-2xl'}`}>
             {renderPage()}
           </main>
-          <RightSidebar currentPage={currentPage} onUserClick={navigateToProfile} />
+          <RightSidebar 
+            currentPage={currentPage} 
+            onUserClick={navigateToProfile}
+            onNavigate={(page) => {
+              setCurrentPage(page);
+              if (page === 'profile') setCurrentUserId(null);
+            }}
+          />
         </div>
       </div>
       <PostModal 

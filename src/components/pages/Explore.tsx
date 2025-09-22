@@ -1,10 +1,12 @@
-import React, { useState } from 'react';
+import React, { useEffect, useState } from 'react';
 import { TrendingUp, TrendingDown, UserPlus, Users } from 'lucide-react';
 import { Avatar } from '../ui/avatar';
 import { Button } from '../ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '../ui/card';
 import { Badge } from '../ui/badge';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '../ui/tabs';
+import { useFirestoreAuthContext } from '../../contexts/FirestoreAuthContext';
+import { getTopTradersByTradeCountToday, type TraderTradeCount, getFollowingIds, getUser, type UserData, getAllUsers } from '../../utils/firestore';
 
 interface Trader {
   id: string;
@@ -142,8 +144,49 @@ const friendsData: Trader[] = [
   }
 ];
 
-export function Explore() {
+type ExploreProps = { onUserClick?: (userId: string) => void };
+
+export function Explore({ onUserClick }: ExploreProps) {
   const [activeTab, setActiveTab] = useState('top-traders');
+  const { user: currentUser } = useFirestoreAuthContext();
+  const [topByTrades, setTopByTrades] = useState<TraderTradeCount[] | null>(null);
+  const [allUsers, setAllUsers] = useState<UserData[] | null>(null);
+  const [friends, setFriends] = useState<UserData[] | null>(null);
+  const [loadingTop, setLoadingTop] = useState(true);
+  const [loadingFriends, setLoadingFriends] = useState(true);
+
+  useEffect(() => {
+    let cancelled = false;
+    (async () => {
+      try {
+        setLoadingTop(true);
+        // Load all users and sort by totalTrades desc
+        const users = await getAllUsers(500);
+        const sorted = [...users].sort((a, b) => (b.totalTrades ?? 0) - (a.totalTrades ?? 0));
+        if (!cancelled) setAllUsers(sorted);
+      } finally {
+        if (!cancelled) setLoadingTop(false);
+      }
+    })();
+    return () => { cancelled = true; };
+  }, []);
+
+  useEffect(() => {
+    let cancelled = false;
+    (async () => {
+      try {
+        setLoadingFriends(true);
+        if (!currentUser?.id) { if (!cancelled) setFriends([]); return; }
+        const ids = await getFollowingIds(currentUser.id);
+        const users = await Promise.all(ids.map(id => getUser(id)));
+        const list = users.filter(Boolean) as UserData[];
+        if (!cancelled) setFriends(list);
+      } finally {
+        if (!cancelled) setLoadingFriends(false);
+      }
+    })();
+    return () => { cancelled = true; };
+  }, [currentUser?.id]);
 
   return (
     <div className="h-screen flex flex-col">
@@ -191,19 +234,66 @@ export function Explore() {
           <Tabs value={activeTab} onValueChange={setActiveTab}>
             <TabsContent value="top-traders">
               <div className="space-y-4">
-
-                {topTraders.map((trader, index) => (
-                  <TraderCard key={trader.id} trader={trader} rank={index + 1} />
-                ))}
+                {loadingTop ? (
+                  <Card className="p-4"><div className="h-6 w-40 bg-accent/50 rounded animate-pulse" /></Card>
+                ) : !allUsers || allUsers.length === 0 ? (
+                  <div className="text-sm text-muted-foreground">No traders yet.</div>
+                ) : (
+                  allUsers.map((user, index) => (
+                    <div key={user.id}>
+                      <TraderCard 
+                        onClick={() => onUserClick && onUserClick(user.id)}
+                        trader={{
+                          id: user.id,
+                          name: user.name || user.username,
+                          username: user.username,
+                          avatar: user.avatar || 'https://www.gravatar.com/avatar/00000000000000000000000000000000?d=identicon&s=64',
+                          isFollowing: false,
+                          winRate: user.winRate ?? 0,
+                          totalPnL: user.totalPnL ?? 0,
+                          totalPnLPercent: user.totalPnLPercent ?? 0,
+                          followers: user.followers ?? 0,
+                          trades: user.totalTrades ?? 0,
+                          recentTrades: []
+                        }}
+                        rank={index + 1}
+                      />
+                    </div>
+                  ))
+                )}
               </div>
             </TabsContent>
             
             <TabsContent value="friends">
               <div className="space-y-4">
-
-                {friendsData.map((trader, index) => (
-                  <TraderCard key={trader.id} trader={trader} rank={index + 1} showRank={false} />
-                ))}
+                {loadingFriends ? (
+                  <Card className="p-4"><div className="h-6 w-40 bg-accent/50 rounded animate-pulse" /></Card>
+                ) : !friends || friends.length === 0 ? (
+                  <div className="text-sm text-muted-foreground">You are not following anyone yet.</div>
+                ) : (
+                  friends.map((u, index) => (
+                    <div key={u.id}>
+                      <TraderCard 
+                        onClick={() => onUserClick && onUserClick(u.id)}
+                        trader={{
+                          id: u.id,
+                          name: u.name || u.username,
+                          username: u.username,
+                          avatar: u.avatar || 'https://www.gravatar.com/avatar/00000000000000000000000000000000?d=identicon&s=64',
+                          isFollowing: true,
+                          winRate: u.winRate ?? 0,
+                          totalPnL: u.totalPnL ?? 0,
+                          totalPnLPercent: u.totalPnLPercent ?? 0,
+                          followers: u.followers ?? 0,
+                          trades: u.totalTrades ?? 0,
+                          recentTrades: []
+                        }}
+                        rank={index + 1}
+                        showRank={false}
+                      />
+                    </div>
+                  ))
+                )}
               </div>
             </TabsContent>
           </Tabs>
@@ -213,9 +303,9 @@ export function Explore() {
   );
 }
 
-function TraderCard({ trader, rank, showRank = true }: { trader: Trader; rank: number; showRank?: boolean }) {
+function TraderCard({ trader, rank, showRank = true, onClick }: { trader: Trader; rank: number; showRank?: boolean; onClick?: () => void }) {
   return (
-    <Card className="p-4 hover:bg-accent/50 transition-colors">
+    <Card className="p-4 hover:bg-accent/50 transition-colors cursor-pointer" onClick={onClick}>
       <div className="flex items-center justify-between">
         <div className="flex items-center gap-3">
           {showRank && (

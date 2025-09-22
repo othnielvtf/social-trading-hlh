@@ -7,7 +7,7 @@ import { Badge } from '../ui/badge';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '../ui/tabs';
 import { ProfileEditModal } from '../ProfileEditModal';
 import { useFirestoreAuthContext } from '../../contexts/FirestoreAuthContext';
-import { getUserPosts, Post } from '../../utils/firestore';
+import { getUserPosts, Post, getUser, type UserData } from '../../utils/firestore';
 import { collection, getDocs, query, where } from 'firebase/firestore';
 import { db } from '../../config/firebase';
 
@@ -61,73 +61,7 @@ const currentUserProfile: UserProfile = {
   isFollowing: false
 };
 
-// Mock profiles for other users
-const mockUserProfiles: { [key: string]: UserProfile } = {
-  'crypto_sarah': {
-    name: 'Sarah Kim',
-    username: 'crypto_sarah',
-    avatar: 'https://images.unsplash.com/photo-1494790108755-2616b612b47c?w=120&h=120&fit=crop&crop=face',
-    bio: 'ETH maximalist • Technical analyst • Teaching crypto strategies 📈',
-    location: 'Los Angeles, CA',
-    website: 'sarahkim.crypto',
-    joinDate: 'February 2023',
-    followers: 2890,
-    following: 456,
-    totalPnL: 67450,
-    totalPnLPercent: 203.8,
-    winRate: 76.4,
-    totalTrades: 198,
-    isFollowing: false
-  },
-  'sarah_defi': {
-    name: 'Sarah Martinez',
-    username: 'sarah_defi',
-    avatar: 'https://images.unsplash.com/photo-1494790108755-2616b2122e94?w=120&h=120&fit=crop&crop=face',
-    bio: 'DeFi yield farmer • Smart contract security researcher • Building the future of finance 🚀',
-    location: 'Austin, TX',
-    website: 'sarahdefi.com',
-    joinDate: 'January 2023',
-    followers: 892,
-    following: 234,
-    totalPnL: 23890,
-    totalPnLPercent: 95.6,
-    winRate: 74.2,
-    totalTrades: 156,
-    isFollowing: true
-  },
-  'crypto_mike': {
-    name: 'Mike Johnson',
-    username: 'crypto_mike',
-    avatar: 'https://images.unsplash.com/photo-1507003211169-0a1dd7228f2d?w=120&h=120&fit=crop&crop=face',
-    bio: 'Bitcoin maximalist • Day trader • Teaching crypto fundamentals 💎🙌',
-    location: 'Miami, FL',
-    website: 'cryptomike.co',
-    joinDate: 'June 2022',
-    followers: 2156,
-    following: 445,
-    totalPnL: 78920,
-    totalPnLPercent: 234.8,
-    winRate: 65.3,
-    totalTrades: 389,
-    isFollowing: false
-  },
-  'lisa_trades': {
-    name: 'Lisa Wang',
-    username: 'lisa_trades',
-    avatar: 'https://images.unsplash.com/photo-1438761681033-6461ffad8d80?w=120&h=120&fit=crop&crop=face',
-    bio: 'Algorithmic trader • Options strategist • Risk management expert 📊',
-    location: 'New York, NY',
-    website: 'lisawang.trading',
-    joinDate: 'September 2022',
-    followers: 1567,
-    following: 321,
-    totalPnL: 56780,
-    totalPnLPercent: 167.4,
-    winRate: 71.8,
-    totalTrades: 298,
-    isFollowing: true
-  }
-};
+// Removed mock profiles for other users; we load from Firestore instead
 
 const mockPosts: UserPost[] = [
   {
@@ -197,7 +131,9 @@ export function Profile({ userId, onUserClick }: ProfileProps) {
   const [copiedField, setCopiedField] = useState<'address' | 'email' | null>(null);
   const { user: firestoreUser, privyUser } = useFirestoreAuthContext();
   const [userPosts, setUserPosts] = useState<Post[] | null>(null);
+  const [targetUser, setTargetUser] = useState<UserData | null>(null);
   const [tradesCount, setTradesCount] = useState<number>(0);
+  const [loadingProfile, setLoadingProfile] = useState<boolean>(false);
   
   // Get the profile data - use current user if no userId provided
   const isOwnProfile = !userId;
@@ -219,9 +155,26 @@ export function Profile({ userId, onUserClick }: ProfileProps) {
     isFollowing: false,
   } as UserProfile : defaultOwn;
 
-  const profile = isOwnProfile
+  const profile: UserProfile = isOwnProfile
     ? mappedOwn
-    : (userId ? mockUserProfiles[userId] || currentUserProfile : mappedOwn);
+    : (
+      targetUser ? {
+        name: targetUser.name || 'User',
+        username: targetUser.username || `user_${targetUser.id.slice(0, 6)}`,
+        avatar: targetUser.avatar || 'https://www.gravatar.com/avatar/00000000000000000000000000000000?d=identicon&s=256',
+        bio: targetUser.bio || '',
+        location: targetUser.location || '',
+        website: targetUser.website || '',
+        joinDate: '—',
+        followers: targetUser.followers ?? 0,
+        following: targetUser.following ?? 0,
+        totalPnL: targetUser.totalPnL ?? 0,
+        totalPnLPercent: targetUser.totalPnLPercent ?? 0,
+        winRate: targetUser.winRate ?? 0,
+        totalTrades: targetUser.totalTrades ?? 0,
+        isFollowing: false,
+      } : currentUserProfile
+    );
 
   const [isEditOpen, setIsEditOpen] = useState(false);
 
@@ -232,6 +185,14 @@ export function Profile({ userId, onUserClick }: ProfileProps) {
       const initialId = isOwnProfile ? firestoreUser?.id : userId;
       if (!initialId) return;
       try {
+        setLoadingProfile(true);
+        // Load target user doc if viewing someone else
+        if (!isOwnProfile && userId) {
+          const u = await getUser(userId);
+          if (!cancelled) setTargetUser(u);
+        } else {
+          setTargetUser(null);
+        }
         // First try treating the param as a Firestore userId
         let posts = await getUserPosts(initialId);
         if (!cancelled && posts.length === 0 && !isOwnProfile) {
@@ -242,6 +203,8 @@ export function Profile({ userId, onUserClick }: ProfileProps) {
           const docSnap = qs.docs[0];
           if (docSnap) {
             const resolvedId = docSnap.id;
+            const u = await getUser(resolvedId);
+            if (!cancelled) setTargetUser(u);
             posts = await getUserPosts(resolvedId);
           }
         }
@@ -251,6 +214,8 @@ export function Profile({ userId, onUserClick }: ProfileProps) {
         setTradesCount(trades);
       } catch (e) {
         // ignore
+      } finally {
+        if (!cancelled) setLoadingProfile(false);
       }
     })();
     return () => { cancelled = true; };
@@ -271,50 +236,60 @@ export function Profile({ userId, onUserClick }: ProfileProps) {
             <div className="relative px-6 pb-6">
               <div className="p-4 space-y-3">
                 {/* Username */}
-                <div className="text-lg text-muted-foreground">@{profile.username}</div>
-                {/* Identity: wallet or email from Privy (full, with copy) */}
-                <div className="flex items-center gap-3 text-xs text-muted-foreground">
-                  {privyUser?.address ? (
-                    <div className="inline-flex items-center gap-2">
-                      <Wallet className="w-3 h-3" />
-                      <span className="font-mono text-foreground/80 break-all">{privyUser.address}</span>
-                      <button
-                        onClick={() => {
-                          navigator.clipboard.writeText(privyUser.address || '');
-                          setCopiedField('address');
-                          setTimeout(() => setCopiedField(null), 1200);
-                        }}
-                        className="px-2 py-0.5 rounded border border-border text-foreground hover:bg-accent/50"
-                      >
-                        {copiedField === 'address' ? 'Copied' : 'Copy'}
-                      </button>
-                    </div>
-                  ) : privyUser?.email ? (
-                    <div className="inline-flex items-center gap-2">
-                      <Mail className="w-3 h-3" />
-                      <span className="text-foreground/80 break-all">{privyUser.email}</span>
-                      <button
-                        onClick={() => {
-                          navigator.clipboard.writeText(privyUser.email || '');
-                          setCopiedField('email');
-                          setTimeout(() => setCopiedField(null), 1200);
-                        }}
-                        className="px-2 py-0.5 rounded border border-border text-foreground hover:bg-accent/50"
-                      >
-                        {copiedField === 'email' ? 'Copied' : 'Copy'}
-                      </button>
-                    </div>
-                  ) : null}
-                </div>
+                {loadingProfile ? (
+                  <div className="h-4 w-40 bg-accent/50 rounded animate-pulse" />
+                ) : (
+                  <div className="text-lg text-muted-foreground">@{profile.username}</div>
+                )}
+                {/* Identity: wallet or email from Privy (full, with copy) - only for own profile */}
+                {isOwnProfile && (
+                  <div className="flex items-center gap-3 text-xs text-muted-foreground">
+                    {privyUser?.address ? (
+                      <div className="inline-flex items-center gap-2">
+                        <Wallet className="w-3 h-3" />
+                        <span className="font-mono text-foreground/80 break-all">{privyUser.address}</span>
+                        <button
+                          onClick={() => {
+                            navigator.clipboard.writeText(privyUser.address || '');
+                            setCopiedField('address');
+                            setTimeout(() => setCopiedField(null), 1200);
+                          }}
+                          className="px-2 py-0.5 rounded border border-border text-foreground hover:bg-accent/50"
+                        >
+                          {copiedField === 'address' ? 'Copied' : 'Copy'}
+                        </button>
+                      </div>
+                    ) : privyUser?.email ? (
+                      <div className="inline-flex items-center gap-2">
+                        <Mail className="w-3 h-3" />
+                        <span className="text-foreground/80 break-all">{privyUser.email}</span>
+                        <button
+                          onClick={() => {
+                            navigator.clipboard.writeText(privyUser.email || '');
+                            setCopiedField('email');
+                            setTimeout(() => setCopiedField(null), 1200);
+                          }}
+                          className="px-2 py-0.5 rounded border border-border text-foreground hover:bg-accent/50"
+                        >
+                          {copiedField === 'email' ? 'Copied' : 'Copy'}
+                        </button>
+                      </div>
+                    ) : null}
+                  </div>
+                )}
                 
                 {/* Profile Picture, Name and Stats */}
                 <div className="flex items-start justify-between">
                   <div className="flex items-start gap-6">
                     <div className="relative">
-                      <Avatar className="w-20 h-20">
-                        <img src={profile.avatar} alt={profile.name} className="w-full h-full object-cover rounded-full" />
-                      </Avatar>
-                      {isOwnProfile && (
+                      {loadingProfile ? (
+                        <div className="w-20 h-20 rounded-full bg-accent/50 animate-pulse" />
+                      ) : (
+                        <Avatar className="w-20 h-20">
+                          <img src={profile.avatar} alt={profile.name} className="w-full h-full object-cover rounded-full" />
+                        </Avatar>
+                      )}
+                      {isOwnProfile && !loadingProfile && (
                         <button
                           onClick={() => setIsEditOpen(true)}
                           className="absolute -bottom-1 -right-1 w-8 h-8 bg-primary text-primary-foreground rounded-full flex items-center justify-center border-2 border-background hover:bg-primary/90"
@@ -325,18 +300,22 @@ export function Profile({ userId, onUserClick }: ProfileProps) {
                       )}
                     </div>
                     <div className="flex flex-col gap-3">
-                      <div className="text-lg">{profile.name}</div>
+                      {loadingProfile ? (
+                        <div className="h-5 w-48 bg-accent/50 rounded animate-pulse" />
+                      ) : (
+                        <div className="text-lg">{profile.name}</div>
+                      )}
                       <div className="flex gap-12">
                         <div className="text-center">
-                          <div className="text-lg">{tradesCount}</div>
+                          <div className="text-lg">{loadingProfile ? <div className="h-5 w-10 bg-accent/50 rounded animate-pulse mx-auto" /> : tradesCount}</div>
                           <div className="text-muted-foreground text-xs">Trades</div>
                         </div>
                         <div className="text-center">
-                          <div className="text-lg">{profile.followers}</div>
+                          <div className="text-lg">{loadingProfile ? <div className="h-5 w-10 bg-accent/50 rounded animate-pulse mx-auto" /> : profile.followers}</div>
                           <div className="text-muted-foreground text-xs">Followers</div>
                         </div>
                         <div className="text-center">
-                          <div className="text-lg">{profile.following}</div>
+                          <div className="text-lg">{loadingProfile ? <div className="h-5 w-10 bg-accent/50 rounded animate-pulse mx-auto" /> : profile.following}</div>
                           <div className="text-muted-foreground text-xs">Following</div>
                         </div>
                       </div>
@@ -345,12 +324,16 @@ export function Profile({ userId, onUserClick }: ProfileProps) {
                   
                   {/* Follow/Edit Button */}
                   {!isOwnProfile ? (
-                    <Button 
-                      variant={profile.isFollowing ? "outline" : "default"}
-                      className="px-6"
-                    >
-                      {profile.isFollowing ? 'Following' : 'Follow'}
-                    </Button>
+                    loadingProfile ? (
+                      <div className="h-9 w-24 bg-accent/50 rounded animate-pulse" />
+                    ) : (
+                      <Button 
+                        variant={profile.isFollowing ? "outline" : "default"}
+                        className="px-6"
+                      >
+                        {profile.isFollowing ? 'Following' : 'Follow'}
+                      </Button>
+                    )
                   ) : (
                     <Button variant="outline" className="px-6" onClick={() => setIsEditOpen(true)}>
                       Edit Profile
@@ -360,7 +343,11 @@ export function Profile({ userId, onUserClick }: ProfileProps) {
                 
                 {/* Bio Section */}
                 <div className="text-sm text-muted-foreground">
-                  {profile.bio || (isOwnProfile ? "Add a bio ..." : "No bio available")}
+                  {loadingProfile ? (
+                    <div className="h-10 w-full bg-accent/50 rounded animate-pulse" />
+                  ) : (
+                    profile.bio || (isOwnProfile ? "Add a bio ..." : "No bio available")
+                  )}
                 </div>
               </div>
             </div>
@@ -489,9 +476,15 @@ export function Profile({ userId, onUserClick }: ProfileProps) {
               </TabsContent>
               
               <TabsContent value="posts" className="space-y-4">
-                {mockPosts.map((post) => (
-                  <ProfilePost key={post.id} post={post} />
-                ))}
+                {!userPosts ? (
+                  <div className="text-sm text-muted-foreground">Loading posts…</div>
+                ) : userPosts.length === 0 ? (
+                  <div className="text-sm text-muted-foreground">No posts yet.</div>
+                ) : (
+                  userPosts.map((post) => (
+                    <ProfilePost key={post.id} post={post} />
+                  ))
+                )}
               </TabsContent>
             </Tabs>
           </div>
@@ -504,36 +497,45 @@ export function Profile({ userId, onUserClick }: ProfileProps) {
   );
 }
 
-const ProfilePost: React.FC<{ post: UserPost }> = ({ post }) => {
+import type { Post as FirestorePost } from '../../utils/firestore';
+
+const ProfilePost: React.FC<{ post: FirestorePost }> = ({ post }) => {
+  const ts = (post as any)?.timestamp;
+  const date: Date | null = ts && typeof ts === 'object' && typeof ts.toDate === 'function' ? ts.toDate() : null;
+  const timeLabel = date ? new Intl.DateTimeFormat(undefined, { dateStyle: 'medium', timeStyle: 'short' }).format(date) : '';
+  const trade = (post as any)?.trade as { symbol?: string; type?: 'long'|'short'; pnl?: number; pnlPercent?: number } | undefined;
   return (
     <Card className="p-4">
       <div className="space-y-3">
         <div className="flex items-center gap-2 text-sm text-muted-foreground">
-          <span>{post.timestamp}</span>
+          {timeLabel ? <span>{timeLabel}</span> : null}
         </div>
         
         <p>{post.content}</p>
         
-        {post.trade && (
+        {trade && (
           <Card className="p-3 bg-accent/30">
             <div className="flex items-center justify-between">
               <div className="flex items-center gap-2">
                 <Badge 
                   variant="outline"
                   className={`text-xs ${
-                    post.trade.type === 'long' 
+                    trade.type === 'long' 
                       ? 'bg-green-100 text-green-700 border-green-200 dark:bg-green-900/20 dark:text-green-400 dark:border-green-800/30' 
                       : 'bg-red-100 text-red-700 border-red-200 dark:bg-red-900/20 dark:text-red-400 dark:border-red-800/30'
                   }`}
                 >
                   <TrendingUp className="w-3 h-3 mr-1" />
-                  {post.trade.type.toUpperCase()}
+                  {(trade.type || '').toUpperCase()}
                 </Badge>
-                <span className="font-medium">{post.trade.symbol}</span>
+                <span className="font-medium">{trade.symbol}</span>
               </div>
-              <div className="text-green-600 font-medium">
-                +${post.trade.pnl.toFixed(0)} ({post.trade.pnlPercent.toFixed(1)}%)
-              </div>
+              {(typeof trade.pnl === 'number' || typeof trade.pnlPercent === 'number') && (
+                <div className="text-green-600 font-medium">
+                  {typeof trade.pnl === 'number' ? `${trade.pnl >= 0 ? '+' : ''}$${Math.abs(trade.pnl).toFixed(0)}` : ''}
+                  {typeof trade.pnlPercent === 'number' ? ` (${trade.pnlPercent.toFixed(1)}%)` : ''}
+                </div>
+              )}
             </div>
           </Card>
         )}
@@ -541,7 +543,7 @@ const ProfilePost: React.FC<{ post: UserPost }> = ({ post }) => {
         <div className="flex items-center gap-6 text-sm text-muted-foreground">
           <button className="hover:text-foreground flex items-center gap-1">
             <Heart className="w-4 h-4" />
-            {post.likes}
+            {post.likes ?? 0}
           </button>
         </div>
       </div>

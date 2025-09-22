@@ -13,6 +13,7 @@ import { ProtectedRoute } from './components/ProtectedRoute';
 import { isUserProfileComplete } from './utils/profile';
 import { ProfileCompletionModal } from './components/ProfileCompletionModal';
 import { TradingModal } from './components/TradingModal';
+import { ToastHost } from './components/ToastHost';
 
 type Page = 'home' | 'explore' | 'portfolio' | 'trade' | 'profile';
 
@@ -146,6 +147,7 @@ function AppContent() {
         }}
       />
       <TradingModal isOpen={isTradeModalOpen} onClose={() => setIsTradeModalOpen(false)} />
+      <ToastHost />
     </div>
   );
 }

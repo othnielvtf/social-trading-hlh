@@ -6,7 +6,7 @@ import { Card, CardContent, CardHeader, CardTitle } from '../ui/card';
 import { Badge } from '../ui/badge';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '../ui/tabs';
 import { useFirestoreAuthContext } from '../../contexts/FirestoreAuthContext';
-import { getTopTradersByTradeCountToday, type TraderTradeCount, getFollowingIds, getUser, type UserData, getAllUsers, getUserPosts, type Post } from '../../utils/firestore';
+import { getTopTradersByTradeCountToday, type TraderTradeCount, getFollowingIds, getUser, type UserData, getAllUsers, getUserPosts, type Post, followUser, unfollowUser } from '../../utils/firestore';
 import { fetchAllMids } from '../../utils/hyperliquid';
 
 interface Trader {
@@ -158,6 +158,8 @@ export function Explore({ onUserClick }: ExploreProps) {
   const [search, setSearch] = useState('');
   const [mids, setMids] = useState<Record<string, number> | null>(null);
   const [winRates, setWinRates] = useState<Record<string, number>>({});
+  const [followingSet, setFollowingSet] = useState<Set<string>>(new Set());
+  const [followLoading, setFollowLoading] = useState<Record<string, boolean>>({});
 
   useEffect(() => {
     let cancelled = false;
@@ -184,7 +186,10 @@ export function Explore({ onUserClick }: ExploreProps) {
         const ids = await getFollowingIds(currentUser.id);
         const users = await Promise.all(ids.map(id => getUser(id)));
         const list = users.filter(Boolean) as UserData[];
-        if (!cancelled) setFriends(list);
+        if (!cancelled) {
+          setFriends(list);
+          setFollowingSet(new Set(ids));
+        }
       } finally {
         if (!cancelled) setLoadingFriends(false);
       }
@@ -333,7 +338,7 @@ export function Explore({ onUserClick }: ExploreProps) {
                             name: user.name || user.username,
                             username: user.username,
                             avatar: user.avatar || 'https://www.gravatar.com/avatar/00000000000000000000000000000000?d=identicon&s=64',
-                            isFollowing: false,
+                            isFollowing: followingSet.has(user.id),
                             winRate: typeof winRates[user.id] === 'number' ? Number(winRates[user.id].toFixed(1)) : (user.winRate ?? 0),
                             totalPnL: user.totalPnL ?? 0,
                             totalPnLPercent: user.totalPnLPercent ?? 0,
@@ -342,6 +347,22 @@ export function Explore({ onUserClick }: ExploreProps) {
                             recentTrades: []
                           }}
                           rank={index + 1}
+                          onFollowToggle={async (targetId, nextFollow) => {
+                            if (!currentUser?.id || followLoading[targetId]) return;
+                            setFollowLoading(prev => ({ ...prev, [targetId]: true }));
+                            const ok = nextFollow 
+                              ? await followUser(currentUser.id, targetId)
+                              : await unfollowUser(currentUser.id, targetId);
+                            setFollowLoading(prev => ({ ...prev, [targetId]: false }));
+                            if (ok) {
+                              setFollowingSet(prev => {
+                                const s = new Set(prev);
+                                if (nextFollow) s.add(targetId); else s.delete(targetId);
+                                return s;
+                              });
+                            }
+                          }}
+                          isFollowBusy={!!followLoading[user.id]}
                         />
                       </div>
                     ))
@@ -384,6 +405,26 @@ export function Explore({ onUserClick }: ExploreProps) {
                           }}
                           rank={index + 1}
                           showRank={false}
+                          onFollowToggle={async (targetId, nextFollow) => {
+                            if (!currentUser?.id || followLoading[targetId]) return;
+                            setFollowLoading(prev => ({ ...prev, [targetId]: true }));
+                            const ok = nextFollow 
+                              ? await followUser(currentUser.id, targetId)
+                              : await unfollowUser(currentUser.id, targetId);
+                            setFollowLoading(prev => ({ ...prev, [targetId]: false }));
+                            if (ok) {
+                              setFollowingSet(prev => {
+                                const s = new Set(prev);
+                                if (nextFollow) s.add(targetId); else s.delete(targetId);
+                                return s;
+                              });
+                              // also update friends list if unfollowed
+                              if (!nextFollow) {
+                                setFriends(prev => (prev ? prev.filter(f => f.id !== targetId) : prev));
+                              }
+                            }
+                          }}
+                          isFollowBusy={!!followLoading[u.id]}
                         />
                       </div>
                     ))
@@ -397,7 +438,7 @@ export function Explore({ onUserClick }: ExploreProps) {
   );
 }
 
-function TraderCard({ trader, rank, showRank = true, onClick }: { trader: Trader; rank: number; showRank?: boolean; onClick?: () => void }) {
+function TraderCard({ trader, rank, showRank = true, onClick, onFollowToggle, isFollowBusy }: { trader: Trader; rank: number; showRank?: boolean; onClick?: () => void; onFollowToggle?: (targetId: string, nextFollow: boolean) => void; isFollowBusy?: boolean }) {
   return (
     <Card className="p-4 hover:bg-accent/50 transition-colors cursor-pointer" onClick={onClick}>
       <div className="flex items-center justify-between">
@@ -429,8 +470,13 @@ function TraderCard({ trader, rank, showRank = true, onClick }: { trader: Trader
         <Button
           variant={trader.isFollowing ? "secondary" : "default"}
           size="sm"
+          disabled={isFollowBusy}
+          onClick={(e) => {
+            e.stopPropagation();
+            if (onFollowToggle) onFollowToggle(trader.id, !trader.isFollowing);
+          }}
         >
-          {trader.isFollowing ? "Following" : "Follow"}
+          {isFollowBusy ? '…' : (trader.isFollowing ? "Following" : "Follow")}
         </Button>
       </div>
     </Card>

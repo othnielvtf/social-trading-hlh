@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useEffect, useState } from 'react';
 import { X, TrendingUp, TrendingDown, Globe, LogIn } from 'lucide-react';
 import { Dialog, DialogContent, DialogTitle, DialogDescription } from './ui/dialog';
 import { Button } from './ui/button';
@@ -7,68 +7,54 @@ import { Card } from './ui/card';
 import { Badge } from './ui/badge';
 import { Avatar } from './ui/avatar';
 import { useFirestoreAuthContext } from '../contexts/FirestoreAuthContext';
-import { createPost } from '../utils/firestore';
-import { fetchAllMids } from '../utils/hyperliquid';
+import { getUserPosts, type Post } from '../utils/firestore';
+import { db } from '../config/firebase';
+import { doc, updateDoc, Timestamp } from 'firebase/firestore';
 
 interface PostModalProps {
   isOpen: boolean;
   onClose: () => void;
 }
 
-// Mock trading activity data
-const mockTradingActivity = [
-  {
-    id: 1,
-    symbol: 'BTC-USD',
-    type: 'long' as const,
-    entry: 42500,
-    current: 45200,
-    size: 1.5,
-    pnl: 4050,
-    pnlPercent: 6.35,
-    timestamp: '2 hours ago'
-  },
-  {
-    id: 2,
-    symbol: 'ETH-USD', 
-    type: 'short' as const,
-    entry: 2850,
-    current: 2720,
-    size: 10,
-    pnl: 1300,
-    pnlPercent: 4.56,
-    timestamp: '5 hours ago'
-  },
-  {
-    id: 3,
-    symbol: 'SOL-USD',
-    type: 'long' as const,
-    entry: 98.50,
-    current: 92.30,
-    size: 50,
-    pnl: -310,
-    pnlPercent: -6.29,
-    timestamp: '1 day ago'
-  }
-];
+// Helper to format Firestore timestamps
+function formatTs(ts?: any): string {
+  try {
+    const d: Date | null = ts && typeof ts.toDate === 'function' ? ts.toDate() : null;
+    if (!d) return '';
+    return new Intl.DateTimeFormat(undefined, { dateStyle: 'medium', timeStyle: 'short' }).format(d);
+  } catch { return ''; }
+}
 
 export function PostModal({ isOpen, onClose }: PostModalProps) {
   const [content, setContent] = useState('');
-  const [selectedTrade, setSelectedTrade] = useState<typeof mockTradingActivity[0] | null>(null);
+  const [selectedTradePost, setSelectedTradePost] = useState<Post | null>(null);
   const { isAuthenticated, user, privyUser, login } = useFirestoreAuthContext();
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const instrumentOptions = [
-    'BTC', 'BTC-PERPS',
-    'HYPE', 'HYPE-PERPS',
-    'SOL', 'SOL-PERPS',
-    'ETH', 'ETH-PERPS',
-  ];
-  const [selectedInstrument, setSelectedInstrument] = useState<string>(instrumentOptions[0]);
-  const [selectedDirection, setSelectedDirection] = useState<'long' | 'short'>('long');
-  const [price, setPrice] = useState<string>('');
-  const [size, setSize] = useState<string>('');
-  const [isPrefilling, setIsPrefilling] = useState(false);
+  const [tradePosts, setTradePosts] = useState<Post[] | null>(null);
+  const [loadingTrades, setLoadingTrades] = useState(false);
+
+  // Load user's trade posts when modal opens
+  useEffect(() => {
+    let cancelled = false;
+    (async () => {
+      if (!isOpen || !isAuthenticated || !user?.id) return;
+      try {
+        setLoadingTrades(true);
+        const posts = await getUserPosts(user.id);
+        const withTrades = posts.filter(p => (p as any).trade);
+        if (!cancelled) {
+          setTradePosts(withTrades);
+          setSelectedTradePost(withTrades[0] || null);
+        }
+      } catch {
+        if (!cancelled) setTradePosts([]);
+      } finally {
+        if (!cancelled) setLoadingTrades(false);
+      }
+    })();
+    return () => { cancelled = true; };
+  }, [isOpen, isAuthenticated, user?.id]);
 
   const handleSubmit = async () => {
     if (!isAuthenticated || !user) {
@@ -79,60 +65,24 @@ export function PostModal({ isOpen, onClose }: PostModalProps) {
       setError('Post content cannot be empty');
       return;
     }
-    // Ensure a trade exists; if not, try to synthesize one from current inputs
-    let tradeToAttach = selectedTrade;
-    if (!tradeToAttach && price) {
-      const parsedPrice = parseFloat(price);
-      const parsedSize = parseFloat(size || '0');
-      if (Number.isFinite(parsedPrice) && parsedPrice > 0) {
-        tradeToAttach = {
-          id: -1,
-          symbol: selectedInstrument,
-          type: selectedDirection,
-          entry: parsedPrice,
-          current: parsedPrice,
-          size: Number.isFinite(parsedSize) ? parsedSize : 0,
-          pnl: 0,
-          pnlPercent: 0,
-          timestamp: 'now'
-        } as typeof mockTradingActivity[0];
-      }
-    }
-    if (!tradeToAttach) {
-      setError('Please attach a trade (instrument and price)');
+    if (!selectedTradePost?.id) {
+      setError('Please select a trade to comment on');
       return;
     }
 
     setIsSubmitting(true);
     setError(null);
     try {
-      const tradeObj: any = {
-        symbol: tradeToAttach.symbol,
-        type: tradeToAttach.type,
-        entry: tradeToAttach.entry,
-      };
-      if (typeof tradeToAttach.size === 'number' && tradeToAttach.size > 0) {
-        tradeObj.size = tradeToAttach.size;
-      }
-      const postData = {
-        userId: user.id,
-        userName: user.name || privyUser?.name || 'Anonymous User',
-        userAvatar: user.avatar || privyUser?.avatar,
-        content: content.trim(),
-        trade: tradeObj,
-      };
-      const postId = await createPost(postData);
-      if (!postId) {
-        setError('Failed to create post. Please try again.');
-        return;
-      }
+      // Update the selected post's content with the new commentary
+      const ref = doc(db, 'posts', selectedTradePost.id);
+      await updateDoc(ref, { content: content.trim(), updatedAt: Timestamp.now() });
       // Reset
       setContent('');
-      setSelectedTrade(null);
+      setSelectedTradePost(null);
       onClose();
     } catch (e) {
       console.error('Error creating post from PostModal:', e);
-      setError('An error occurred while creating your post.');
+      setError('An error occurred while updating your trade.');
     } finally {
       setIsSubmitting(false);
     }
@@ -144,7 +94,7 @@ export function PostModal({ isOpen, onClose }: PostModalProps) {
 
   return (
     <Dialog open={isOpen} onOpenChange={onClose}>
-      <DialogContent className="max-w-xl p-0 gap-0">
+      <DialogContent className="max-w-xl max-h-[90vh] p-0 gap-0">
         <DialogTitle className="sr-only">Create Post</DialogTitle>
         <DialogDescription className="sr-only">
           Create a new post and optionally share your recent trading activity with your followers.
@@ -166,178 +116,95 @@ export function PostModal({ isOpen, onClose }: PostModalProps) {
             </Button>
           </div>
         ) : (
-          <div className="p-4 pr-16">
-          {/* Main compose area */}
-          <div className="flex gap-3">
-            <Avatar className="w-12 h-12">
-              {user?.avatar ? (
-                <img 
-                  src={user.avatar} 
-                  alt={`${user.name}'s avatar`} 
-                  className="w-full h-full object-cover rounded-full" 
-                />
-              ) : (
-                <div className="w-full h-full flex items-center justify-center bg-primary text-primary-foreground rounded-full">
-                  {user?.name?.charAt(0).toUpperCase() || 'A'}
-                </div>
-              )}
-            </Avatar>
-            
-            <div className="flex-1 space-y-4">
-              <Textarea
-                placeholder="Add your thoughts about this trade..."
-                value={content}
-                onChange={(e) => setContent(e.target.value)}
-                className="min-h-[120px] resize-none border-none text-xl placeholder:text-muted-foreground focus:ring-0 p-3"
-              />
-
-              {/* Manual Add: Instrument + Direction + Price */}
-              <div className="space-y-3">
-                <div className="mt-2 p-4 border border-border rounded-lg bg-card/50">
-                  <div className="text-sm font-medium mb-3">Add Trade Details</div>
-                  <div className="flex flex-col sm:flex-row gap-3 sm:items-end">
-                    <div className="flex-1">
-                      <label className="text-xs text-muted-foreground">Instrument</label>
-                      <select
-                        value={selectedInstrument}
-                        onChange={(e) => setSelectedInstrument(e.target.value)}
-                        className="mt-1 w-full border border-border rounded-md bg-background p-2 text-sm focus:outline-none focus:ring-2 focus:ring-primary/50"
-                      >
-                        {instrumentOptions.map((opt) => (
-                          <option key={opt} value={opt}>{opt}</option>
-                        ))}
-                      </select>
+          <div className="flex flex-col max-h-[80vh]">
+            <div className="p-4 pr-16 grow overflow-y-auto">
+              <div className="flex gap-3">
+                <Avatar className="w-12 h-12">
+                  {user?.avatar ? (
+                    <img 
+                      src={user.avatar} 
+                      alt={`${user.name}'s avatar`} 
+                      className="w-full h-full object-cover rounded-full" 
+                    />
+                  ) : (
+                    <div className="w-full h-full flex items-center justify-center bg-primary text-primary-foreground rounded-full">
+                      {user?.name?.charAt(0).toUpperCase() || 'A'}
                     </div>
-                    <div className="flex items-center gap-2">
-                      <Button
-                        type="button"
-                        aria-pressed={selectedDirection === 'long'}
-                        className={`px-4 py-1.5 rounded-full font-semibold transition-colors ${
-                          selectedDirection === 'long'
-                            ? 'bg-green-600 text-white hover:bg-green-700 ring-2 ring-offset-2 ring-green-400 ring-offset-background'
-                            : 'bg-green-600/70 text-white hover:bg-green-600 opacity-70'
-                        }`}
-                        onClick={() => setSelectedDirection('long')}
-                        size="sm"
-                      >
-                        <TrendingUp className="w-3 h-3 mr-1" /> Long
-                      </Button>
-                      <Button
-                        type="button"
-                        aria-pressed={selectedDirection === 'short'}
-                        className={`px-4 py-1.5 rounded-full font-semibold transition-colors ${
-                          selectedDirection === 'short'
-                            ? 'bg-red-600 text-white hover:bg-red-700 ring-2 ring-offset-2 ring-red-400 ring-offset-background'
-                            : 'bg-red-600/70 text-white hover:bg-red-600 opacity-70'
-                        }`}
-                        onClick={() => setSelectedDirection('short')}
-                        size="sm"
-                      >
-                        <TrendingDown className="w-3 h-3 mr-1" /> Short
-                      </Button>
+                  )}
+                </Avatar>
+                <div className="flex-1 space-y-4">
+                  <Textarea
+                    placeholder="Add your thoughts about this trade..."
+                    value={content}
+                    onChange={(e) => setContent(e.target.value)}
+                    className="min-h-[120px] resize-none border-none text-xl placeholder:text-muted-foreground focus:ring-0 p-3"
+                  />
+                  <div className="space-y-2">
+                    <div className="text-sm font-medium">Select one of your trades</div>
+                    <div className="max-h-56 overflow-y-auto space-y-2">
+                      {loadingTrades ? (
+                        <Card className="p-3"><div className="h-5 w-40 bg-accent/50 rounded animate-pulse" /></Card>
+                      ) : !tradePosts || tradePosts.length === 0 ? (
+                        <div className="text-sm text-muted-foreground">No trades found. Execute a trade to start posting commentary.</div>
+                      ) : (
+                        tradePosts.map((p) => {
+                          const t = (p as any).trade as { symbol?: string; type?: 'long'|'short'; entry?: number } | undefined;
+                          if (!t) return null;
+                          const selected = selectedTradePost?.id === p.id;
+                          return (
+                            <Card 
+                              key={p.id} 
+                              className={`p-3 cursor-pointer border ${selected ? 'border-primary' : 'border-border'} hover:bg-accent/40`}
+                              onClick={() => setSelectedTradePost(p)}
+                            >
+                              <div className="flex items-center justify-between">
+                                <div className="flex items-center gap-2">
+                                  <Badge 
+                                    variant="outline"
+                                    className={`text-xs ${t.type === 'long' ? 'bg-green-100 text-green-700 border-green-200 dark:bg-green-900/20 dark:text-green-400 dark:border-green-800/30' : 'bg-red-100 text-red-700 border-red-200 dark:bg-red-900/20 dark:text-red-400 dark:border-red-800/30'}`}
+                                  >
+                                    {t.type?.toUpperCase()}
+                                  </Badge>
+                                  <span className="font-medium">{t.symbol}</span>
+                                  {typeof t.entry === 'number' && (
+                                    <span className="text-xs text-muted-foreground">entry ${t.entry.toLocaleString()}</span>
+                                  )}
+                                </div>
+                                <div className="text-xs text-muted-foreground">{formatTs((p as any).timestamp)}</div>
+                              </div>
+                              {p.content ? (
+                                <div className="mt-1 text-xs text-foreground/80 line-clamp-1">{p.content}</div>
+                              ) : null}
+                            </Card>
+                          );
+                        })
+                      )}
                     </div>
                   </div>
-                  <div className="mt-3 grid grid-cols-1 sm:grid-cols-2 gap-3">
-                    <div>
-                      <label className="text-xs text-muted-foreground">Price</label>
-                      <div className="mt-1 flex gap-2">
-                        <input
-                          type="number"
-                          min="0"
-                          step="0.00000001"
-                          placeholder="e.g. 42500"
-                          value={price}
-                          onChange={(e) => setPrice(e.target.value)}
-                          className="flex-1 border border-border rounded-md bg-background p-2 text-sm focus:outline-none focus:ring-2 focus:ring-primary/50"
-                        />
-                        <Button
-                          type="button"
-                          size="sm"
-                          disabled={isPrefilling}
-                          onClick={async () => {
-                            try {
-                              setIsPrefilling(true);
-                              const mids = await fetchAllMids('');
-                              const base = selectedInstrument.replace(/-PERPS?$/i, '');
-                              const midStr = mids[selectedInstrument] || mids[base];
-                              if (midStr) setPrice(String(midStr));
-                            } finally {
-                              setIsPrefilling(false);
-                            }
-                          }}
-                          className="whitespace-nowrap"
-                        >
-                          {isPrefilling ? 'Prefilling…' : 'Use current'}
-                        </Button>
-                      </div>
-                      <p className="mt-1 text-xs text-muted-foreground">You can prefill with the current mid price.</p>
-                    </div>
-                    <div>
-                      <label className="text-xs text-muted-foreground">Size (optional)</label>
-                      <input
-                        type="number"
-                        min="0"
-                        step="0.00000001"
-                        placeholder="e.g. 1.5"
-                        value={size}
-                        onChange={(e) => setSize(e.target.value)}
-                        className="mt-1 w-full border border-border rounded-md bg-background p-2 text-sm focus:outline-none focus:ring-2 focus:ring-primary/50"
-                      />
-                    </div>
-                  </div>
-                  <div className="mt-3 flex justify-end">
-                    <Button
-                      type="button"
-                      onClick={() => {
-                        const parsedPrice = parseFloat(price);
-                        const parsedSize = parseFloat(size || '0');
-                        if (!selectedInstrument || !Number.isFinite(parsedPrice) || parsedPrice <= 0) return;
-                        setSelectedTrade({
-                          id: -1,
-                          symbol: selectedInstrument,
-                          type: selectedDirection,
-                          entry: parsedPrice,
-                          current: parsedPrice,
-                          size: Number.isFinite(parsedSize) ? parsedSize : 0,
-                          pnl: 0,
-                          pnlPercent: 0,
-                          timestamp: 'now'
-                        });
-                      }}
-                      size="sm"
-                      className="rounded-full"
-                    >
-                      Attach
-                    </Button>
-                  </div>
+                  {error && (
+                    <div className="text-sm text-destructive">{error}</div>
+                  )}
                 </div>
               </div>
-              {error && (
-                <div className="text-sm text-destructive">{error}</div>
-              )}
+            </div>
+            <div className="flex justify-between items-center pt-4 border-t border-border">
+              <div className="text-sm text-muted-foreground">
+                {selectedTradePost && (
+                  <span className="text-primary">
+                    Adding commentary to {(selectedTradePost as any).trade?.symbol} trade
+                  </span>
+                )}
+              </div>
+              <Button 
+                onClick={handleSubmit} 
+                disabled={!isValid || !selectedTradePost}
+                className="bg-primary text-primary-foreground hover:bg-primary/90 rounded-full px-6"
+                size="sm"
+              >
+                Comment
+              </Button>
             </div>
           </div>
-
-          {/* Bottom toolbar */}
-          <div className="flex justify-between items-center pt-4 mt-4 border-t border-border">
-            <div className="text-sm text-muted-foreground">
-              {selectedTrade && (
-                <span className="text-primary">
-                  Adding commentary to {selectedTrade.symbol} trade
-                </span>
-              )}
-            </div>
-            
-            <Button 
-              onClick={handleSubmit} 
-              disabled={!isValid || !selectedTrade}
-              className="bg-primary text-primary-foreground hover:bg-primary/90 rounded-full px-6"
-              size="sm"
-            >
-              Update
-            </Button>
-          </div>
-        </div>
         )}
       </DialogContent>
     </Dialog>

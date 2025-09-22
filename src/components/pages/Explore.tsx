@@ -6,7 +6,8 @@ import { Card, CardContent, CardHeader, CardTitle } from '../ui/card';
 import { Badge } from '../ui/badge';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '../ui/tabs';
 import { useFirestoreAuthContext } from '../../contexts/FirestoreAuthContext';
-import { getTopTradersByTradeCountToday, type TraderTradeCount, getFollowingIds, getUser, type UserData, getAllUsers } from '../../utils/firestore';
+import { getTopTradersByTradeCountToday, type TraderTradeCount, getFollowingIds, getUser, type UserData, getAllUsers, getUserPosts, type Post } from '../../utils/firestore';
+import { fetchAllMids } from '../../utils/hyperliquid';
 
 interface Trader {
   id: string;
@@ -154,6 +155,9 @@ export function Explore({ onUserClick }: ExploreProps) {
   const [friends, setFriends] = useState<UserData[] | null>(null);
   const [loadingTop, setLoadingTop] = useState(true);
   const [loadingFriends, setLoadingFriends] = useState(true);
+  const [search, setSearch] = useState('');
+  const [mids, setMids] = useState<Record<string, number> | null>(null);
+  const [winRates, setWinRates] = useState<Record<string, number>>({});
 
   useEffect(() => {
     let cancelled = false;
@@ -188,6 +192,77 @@ export function Explore({ onUserClick }: ExploreProps) {
     return () => { cancelled = true; };
   }, [currentUser?.id]);
 
+  // Load mids for live calculations
+  useEffect(() => {
+    let cancelled = false;
+    (async () => {
+      try {
+        const midsRes = await fetchAllMids('');
+        if (cancelled) return;
+        const parsed: Record<string, number> = {};
+        Object.entries(midsRes || {}).forEach(([k, v]) => {
+          const num = parseFloat(v as string);
+          if (!Number.isNaN(num)) {
+            parsed[k] = num;
+            if (k.startsWith('@')) parsed[k.slice(1)] = num;
+          }
+        });
+        setMids(parsed);
+      } catch {
+        setMids(null);
+      }
+    })();
+    return () => { cancelled = true; };
+  }, []);
+
+  // Compute dynamic win rates based on posts (entry vs mid or pnlPercent)
+  useEffect(() => {
+    let cancelled = false;
+    const ids = new Set<string>();
+    (allUsers || []).forEach(u => ids.add(u.id));
+    (friends || []).forEach(u => ids.add(u.id));
+    if (ids.size === 0) return;
+
+    (async () => {
+      const entries = Array.from(ids);
+      const batches = await Promise.all(entries.map(async (id) => {
+        try {
+          const posts = await getUserPosts(id);
+          let wins = 0;
+          let total = 0;
+          for (const p of posts) {
+            const t = (p as any).trade as { entry?: number; type?: 'long'|'short'; pnlPercent?: number; symbol?: string } | undefined;
+            if (!t) continue;
+            total++;
+            let isWin: boolean | null = null;
+            if (typeof t.entry === 'number' && t.symbol && mids) {
+              const base = t.symbol.split('-')[0]?.toUpperCase();
+              const mid = base ? (mids[base] ?? null) : null;
+              if (mid) {
+                const diff = t.type === 'short' ? (t.entry - mid) : (mid - t.entry);
+                isWin = diff > 0;
+              }
+            }
+            if (isWin === null && typeof t.pnlPercent === 'number') {
+              isWin = t.pnlPercent > 0;
+            }
+            if (isWin) wins++;
+          }
+          const rate = total > 0 ? (wins / total) * 100 : 0;
+          return { id, rate };
+        } catch {
+          return { id, rate: 0 };
+        }
+      }));
+      if (cancelled) return;
+      const map: Record<string, number> = {};
+      for (const b of batches) map[b.id] = b.rate;
+      setWinRates(map);
+    })();
+
+    return () => { cancelled = true; };
+  }, [allUsers, friends, mids]);
+
   return (
     <div className="h-screen flex flex-col">
 
@@ -209,6 +284,17 @@ export function Explore({ onUserClick }: ExploreProps) {
               </TabsList>
             </Tabs>
           </div>
+
+          {/* Search bar */}
+          <div className="mb-6">
+            <input
+              type="text"
+              value={search}
+              onChange={(e) => setSearch(e.target.value)}
+              placeholder="Search traders by name or @username"
+              className="w-full px-3 py-2 border border-border rounded bg-background text-foreground placeholder:text-muted-foreground focus:outline-none focus:ring-2 focus:ring-primary/30"
+            />
+          </div>
           
           <div className="flex items-center justify-between mb-6">
 
@@ -229,27 +315,36 @@ export function Explore({ onUserClick }: ExploreProps) {
                 ) : !allUsers || allUsers.length === 0 ? (
                   <div className="text-sm text-muted-foreground">No traders yet.</div>
                 ) : (
-                  allUsers.map((user, index) => (
-                    <div key={user.id}>
-                      <TraderCard 
-                        onClick={() => onUserClick && onUserClick(user.id)}
-                        trader={{
-                          id: user.id,
-                          name: user.name || user.username,
-                          username: user.username,
-                          avatar: user.avatar || 'https://www.gravatar.com/avatar/00000000000000000000000000000000?d=identicon&s=64',
-                          isFollowing: false,
-                          winRate: user.winRate ?? 0,
-                          totalPnL: user.totalPnL ?? 0,
-                          totalPnLPercent: user.totalPnLPercent ?? 0,
-                          followers: user.followers ?? 0,
-                          trades: user.totalTrades ?? 0,
-                          recentTrades: []
-                        }}
-                        rank={index + 1}
-                      />
-                    </div>
-                  ))
+                  allUsers
+                    .filter((user) => {
+                      const q = search.trim().toLowerCase();
+                      if (!q) return true;
+                      return (
+                        (user.name || '').toLowerCase().includes(q) ||
+                        (user.username || '').toLowerCase().includes(q)
+                      );
+                    })
+                    .map((user, index) => (
+                      <div key={user.id}>
+                        <TraderCard 
+                          onClick={() => onUserClick && onUserClick(user.id)}
+                          trader={{
+                            id: user.id,
+                            name: user.name || user.username,
+                            username: user.username,
+                            avatar: user.avatar || 'https://www.gravatar.com/avatar/00000000000000000000000000000000?d=identicon&s=64',
+                            isFollowing: false,
+                            winRate: typeof winRates[user.id] === 'number' ? Number(winRates[user.id].toFixed(1)) : (user.winRate ?? 0),
+                            totalPnL: user.totalPnL ?? 0,
+                            totalPnLPercent: user.totalPnLPercent ?? 0,
+                            followers: user.followers ?? 0,
+                            trades: user.totalTrades ?? 0,
+                            recentTrades: []
+                          }}
+                          rank={index + 1}
+                        />
+                      </div>
+                    ))
                 )}
               </div>
             </TabsContent>
@@ -261,28 +356,37 @@ export function Explore({ onUserClick }: ExploreProps) {
                 ) : !friends || friends.length === 0 ? (
                   <div className="text-sm text-muted-foreground">You are not following anyone yet.</div>
                 ) : (
-                  friends.map((u, index) => (
-                    <div key={u.id}>
-                      <TraderCard 
-                        onClick={() => onUserClick && onUserClick(u.id)}
-                        trader={{
-                          id: u.id,
-                          name: u.name || u.username,
-                          username: u.username,
-                          avatar: u.avatar || 'https://www.gravatar.com/avatar/00000000000000000000000000000000?d=identicon&s=64',
-                          isFollowing: true,
-                          winRate: u.winRate ?? 0,
-                          totalPnL: u.totalPnL ?? 0,
-                          totalPnLPercent: u.totalPnLPercent ?? 0,
-                          followers: u.followers ?? 0,
-                          trades: u.totalTrades ?? 0,
-                          recentTrades: []
-                        }}
-                        rank={index + 1}
-                        showRank={false}
-                      />
-                    </div>
-                  ))
+                  friends
+                    .filter((u) => {
+                      const q = search.trim().toLowerCase();
+                      if (!q) return true;
+                      return (
+                        (u.name || '').toLowerCase().includes(q) ||
+                        (u.username || '').toLowerCase().includes(q)
+                      );
+                    })
+                    .map((u, index) => (
+                      <div key={u.id}>
+                        <TraderCard 
+                          onClick={() => onUserClick && onUserClick(u.id)}
+                          trader={{
+                            id: u.id,
+                            name: u.name || u.username,
+                            username: u.username,
+                            avatar: u.avatar || 'https://www.gravatar.com/avatar/00000000000000000000000000000000?d=identicon&s=64',
+                            isFollowing: true,
+                            winRate: typeof winRates[u.id] === 'number' ? Number(winRates[u.id].toFixed(1)) : (u.winRate ?? 0),
+                            totalPnL: u.totalPnL ?? 0,
+                            totalPnLPercent: u.totalPnLPercent ?? 0,
+                            followers: u.followers ?? 0,
+                            trades: u.totalTrades ?? 0,
+                            recentTrades: []
+                          }}
+                          rank={index + 1}
+                          showRank={false}
+                        />
+                      </div>
+                    ))
                 )}
               </div>
             </TabsContent>
